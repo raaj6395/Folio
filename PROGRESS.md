@@ -1,12 +1,14 @@
 # Folio — Progress
 
-**Last updated:** 2026-10-22 00:05
-**Current milestone:** M2
-**Current task:** M2.1 — insert/update/delete/move/read tools
+**Last updated:** 2026-10-22 00:10
+**Current milestone:** M3
+**Current task:** M3.1 — D2 diagram block
 **Overall status:** On track
 
 ## Status summary
-Milestones 0 and 1 are done. Claude Code can create a notebook, append core blocks (heading, paragraph, bullets, numbered, callout, code, divider, page_break), get an outline with page numbers, render pages as PNG and export a PDF, all with the `clean` theme. Editing tools, undo, tables/Q&A, diagrams, other themes and the viewer are not built yet.
+Milestones 0, 1 and 2 are done. Claude Code can create a notebook, append core blocks (heading, paragraph, bullets, numbered, callout, code, divider, page_break), get an outline with page numbers, render pages as PNG and export a PDF, all with the `clean` theme. Milestone 2 added targeted editing (insert/update/delete/move/read), versions/undo/restore with optimistic concurrency, per-block page/position info, pagination rules (keep-with-next, no-split under 40%) with warnings, and table/qa/fill_in/spacer blocks. Not built yet: diagrams, the notebook/dotgrid themes, two_column, the viewer.
+
+**M2 acceptance (2026-10-22):** Headless Claude (sonnet) was asked to "add a comparison table of HTTP methods after the methods section" of `n_hku4c2ig`. It used get_outline and inserted the table right after the section's last block. I checked every outline page against `pdftotext`: all match (one false alarm from inline-code spacing in pdftotext output). `undo` removed the table (3→2 pages) and `restore_version` brought it back. Seen: the table sat alone on page 2 because of an existing page_break, so I added a warning for pages under 30% full that end in a page_break.
 
 **M1 acceptance (2026-10-22):** `claude -p "Make 2 pages of notes on REST APIs using folio…" --allowedTools "mcp__folio__*" --model sonnet` produced `~/.folio/exports/rest-apis-2026-10-21.pdf` (2 pages, 86%/77% fill). Claude rendered pages and reported them clean. I checked both pages by eye: well structured and readable. Minor: paragraphs sit tight under H1s, and there's extra space under code captions.
 
@@ -36,12 +38,12 @@ Legend: [ ] todo · [~] in progress · [x] done · [!] blocked
 - [x] M1.6 Injection-safety test — `ace131a` — verified: pdftotext shows Typst syntax literally; javascript: links neutralised
 
 ### Milestone 2 — Editing and layout awareness
-- [ ] M2.1 Stable IDs, fractional ordering, insert/update/delete/move/read
-- [ ] M2.2 Snapshots, list_versions, undo, restore, expected_version
-- [ ] M2.3 Layout info via typst, page numbers, get_layout_info
-- [ ] M2.4 Pagination rules and warnings
-- [ ] M2.5 table, qa, fill_in, spacer
-- [ ] M2.6 Build caching and performance measurement
+- [x] M2.1 Stable IDs, fractional ordering, insert/update/delete/move/read — `e1c3c6e` — verified: TestM2Editing (insert/start/update type change/move order/delete/read)
+- [x] M2.2 Snapshots, list_versions, undo, restore, expected_version — `a98f8f2` — verified: TestM2Editing undo×2, restore, stale expected_version error names current version
+- [x] M2.3 Layout info via typst, page numbers, get_layout_info — `c0e95b4` — verified: TestPagesMatchPDF (60 blocks, every reported page checked with pdftotext)
+- [x] M2.4 Pagination rules and warnings — `a514050` — verified: sweep test (heading+callout never separated or split across a page boundary), synthetic warning tests
+- [x] M2.5 table, qa, fill_in, spacer — `d3ad164` — verified: validator tests, rendered page inspected (hidden answer upside down at page bottom)
+- [x] M2.6 Build caching and performance measurement — `793da13` — verified: `FOLIO_PERF=1 go test ./internal/layout -run Perf -v`
 
 ### Milestone 3 — Diagrams, themes, viewer
 - [ ] M3.1 D2 diagram block, preview_diagram
@@ -67,12 +69,20 @@ Legend: [ ] todo · [~] in progress · [x] done · [!] blocked
 ## Performance measurements
 | Date | Notebook | Pages | Rebuild time | Notes |
 |---|---|---|---|---|
+| 2026-10-22 | synthetic (perf_test) | 10 (133 blocks) | 147 ms avg of 5 | Apple M1, parallel compile+eval, clean theme; cached 0.2 ms |
+| 2026-10-22 | synthetic (perf_test) | 30 (413 blocks) | 274 ms avg of 5 | same; cached 0.5 ms |
 
 ## Kitchen sink visual check
 | Date | Theme | Result | Issues seen |
 |---|---|---|---|
 
 ## Session log
+### 2026-10-22 — Session 1 (continued)
+- Did: M2.1–M2.6, M2 acceptance.
+- Verified: all package tests green; perf numbers above.
+- Problems: in-place edits didn't persist (the store diffed against the same slice), fixed in store.Mutate; the inferred output schema rejected flattened block fields, fixed with an open Block schema; Typst `flatten()` recursed into span arrays; marker positions around `v()` are unreliable (spacer now uses a fixed-height block).
+- Next: M3.1 D2 diagrams.
+
 ### 2026-10-21 — Session 1
 - Did: M0.1–M0.4. Installed Typst 0.15.1 via Homebrew. Registered folio with Claude Code at user scope.
 - Verified: doctor PASS; headless Claude Code call to ping returned pong.
