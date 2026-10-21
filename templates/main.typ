@@ -101,6 +101,57 @@
       caption(b.caption)
       endmark(b.id)
     }))
+  } else if ty == "table" {
+    let n = b.columns.len()
+    nosplit(above: 1em, below: 1em, block(width: 100%, {
+      mark(b.id)
+      align(center, table(
+        columns: (auto,) * n,
+        stroke: 0.5pt + t.rule,
+        inset: (x: 6pt, y: 5pt),
+        fill: (_, y) => if y == 0 { t.table-header },
+        table.header(..b.columns.map(c => text(weight: "bold", spans(c)))),
+        ..b.rows.map(r => r.map(c => spans(c))).flatten(),
+      ))
+      caption(b.caption)
+      endmark(b.id)
+    }))
+  } else if ty == "qa" {
+    counter("qa").step()
+    nosplit(above: 1em, below: 1em, block(width: 100%, stroke: 0.7pt + t.qa-accent, radius: t.callout-radius, inset: (x: 10pt, y: 8pt), {
+      mark(b.id)
+      context [#text(weight: "bold", fill: t.qa-accent)[Q#counter("qa").display().] ]
+      spans(b.question)
+      if b.hide_answer {
+        block(above: 0.7em, text(size: 0.85em, fill: t.muted, style: "italic")[Answer: upside down at the bottom of this page.])
+      } else {
+        block(above: 0.7em, width: 100%, stroke: (top: 0.5pt + t.rule), inset: (top: 6pt), {
+          text(weight: "bold", fill: t.qa-accent)[A. ]
+          spans(b.answer)
+        })
+      }
+      endmark(b.id)
+    }))
+    if b.hide_answer {
+      place(bottom, float: true, clearance: 8pt, rotate(180deg, block(width: 100%, text(size: 0.8em, fill: t.muted, {
+        context [*A#counter("qa").display().* ]
+        spans(b.answer)
+      }))))
+    }
+  } else if ty == "fill_in" {
+    nosplit(above: 1em, below: 1em, block(width: 100%, {
+      mark(b.id)
+      text(weight: "semibold", spans(b.prompt))
+      for _ in range(b.lines) {
+        v(7.5mm, weak: false)
+        line(length: 100%, stroke: 0.5pt + t.fill-line)
+      }
+      v(2mm)
+      endmark(b.id)
+    }))
+  } else if ty == "spacer" {
+    let h = (small: 4mm, medium: 10mm, large: 20mm).at(b.size)
+    block(width: 100%, { mark(b.id); block(width: 100%, height: h); endmark(b.id) })
   } else if ty == "divider" {
     block(width: 100%, above: 1em, below: 1em, { mark(b.id); line(length: 100%, stroke: 0.6pt + t.rule); endmark(b.id) })
   } else if ty == "page_break" {

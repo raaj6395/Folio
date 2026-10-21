@@ -21,16 +21,23 @@ Text fields accept only: `**bold**`, `*italic*`, `` `code` ``, `[text](url)`, `=
 {"type": "numbered", "items": [{"text": "Client sends request"}, {"text": "Server returns representation"}]}
 {"type": "callout", "variant": "definition", "title": "Idempotent", "body": ["Doing it twice has the same effect as doing it once."]}
 {"type": "code", "language": "http", "code": "GET /users/42 HTTP/1.1\nAccept: application/json", "caption": "A simple GET"}
+{"type": "table", "columns": ["Method", "Idempotent", "Safe"], "rows": [["GET", "yes", "yes"], ["POST", "no", "no"]], "caption": "HTTP method properties"}
+{"type": "qa", "question": "Why is PUT idempotent?", "answer": "It sets the resource to the given state; repeating it changes nothing.", "hide_answer": true}
+{"type": "fill_in", "prompt": "Explain statelessness in your own words.", "lines": 3}
+{"type": "spacer", "size": "medium"}
 {"type": "divider"}
 {"type": "page_break"}
 ```
 Callout variants: `note`, `tip`, `warning`, `definition`, `key_point`.
 
-Limits: paragraph ≤ 2000 chars; lists ≤ 40 items and depth ≤ 3; code ≤ 80 lines.
+Limits: paragraph ≤ 2000 chars; lists ≤ 40 items and depth ≤ 3; code ≤ 80 lines; tables 2–6 columns, ≤ 25 rows; fill_in 1–15 lines.
+
+`qa` with `hide_answer: true` prints the answer upside down at the bottom of the page.
 
 ## Style for good notes
 - Short paragraphs: 2–4 sentences.
 - One idea per callout. Use `definition` for terms, `key_point` for the thing to remember, `warning` for pitfalls.
-- Prefer lists over long prose for enumerations.
+- Prefer lists over long prose for enumerations, and tables for comparisons.
+- End each section with 1–3 `qa` or `fill_in` blocks for active recall.
 - Use `==highlight==` sparingly, for the single most important phrase in a section.
 - Aim for dense but breathable pages: about one H2 section per half page.

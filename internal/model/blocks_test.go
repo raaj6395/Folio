@@ -16,6 +16,10 @@ func TestParseValid(t *testing.T) {
 		`{"type":"code","language":"go","code":"fmt.Println(1)\n"}`,
 		`{"type":"divider"}`,
 		`{"type":"page_break","id":"b_ignored1"}`,
+		`{"type":"table","columns":["Method","Safe"],"rows":[["GET","yes"],["POST","no"]],"caption":"x"}`,
+		`{"type":"qa","question":"Q?","answer":"A","hide_answer":true}`,
+		`{"type":"fill_in","prompt":"Explain","lines":3}`,
+		`{"type":"spacer","size":"medium"}`,
 	} {
 		if _, err := Parse(json.RawMessage(s)); err != nil {
 			t.Errorf("Parse(%s): %v", s, err)
@@ -38,6 +42,12 @@ func TestParseInvalid(t *testing.T) {
 		{`{"type":"callout","variant":"note","body":"x"}`, `field "body" must be a list of string, got string`},
 		{`{"type":"code","language":"go","code":"` + strings.Repeat(`x\n`, 81) + `"}`, "81 lines, max 80"},
 		{`{"type":"divider","text":"x"}`, "takes no fields besides type"},
+		{`{"type":"table","columns":["Method","Idempotent","Safe"],"rows":[["a","b","c"],["a","b","c"],["a","b","c","d"]]}`, "row 2 has 4 cells, expected 3 (columns: Method, Idempotent, Safe)"},
+		{`{"type":"table","columns":["a"],"rows":[["x"]]}`, "columns has 1 entries, must be 2-6"},
+		{`{"type":"table","columns":["a","b"],"rows":[` + strings.TrimSuffix(strings.Repeat(`["x","y"],`, 26), ",") + `]}`, "26 rows, max 25"},
+		{`{"type":"qa","question":"q","answer":""}`, `field "answer" is required`},
+		{`{"type":"fill_in","prompt":"p","lines":16}`, "lines must be 1-15, got 16"},
+		{`{"type":"spacer","size":"huge"}`, `size must be "small", "medium" or "large"`},
 	}
 	for _, c := range cases {
 		_, err := Parse(json.RawMessage(c.in))

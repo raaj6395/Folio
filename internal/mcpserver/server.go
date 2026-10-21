@@ -48,6 +48,10 @@ const blockDescription = `One block. Set "type" plus that type's fields:
 - bullets / numbered: items: [{text, children?: [items]}]; nesting depth max 3, max 40 items total.
 - callout: variant (note|tip|warning|definition|key_point), title? (string), body: [string, ...] one string per paragraph.
 - code: language (e.g. "go", "python", "" for plain), code (max 80 lines), caption?.
+- table: columns: [2-6 header strings], rows: [[cell, ...], ...] (max 25 rows, each row exactly len(columns) cells), caption?.
+- qa: question, answer, hide_answer? (bool; true prints the answer upside down at the page bottom for self-testing).
+- fill_in: prompt, lines (1-15). Blank ruled lines for the reader to write on.
+- spacer: size (small|medium|large). Vertical space.
 - divider: no fields. Horizontal rule.
 - page_break: no fields. Starts a new page.
 Text fields accept only this inline markdown: **bold**, *italic*, ` + "`code`" + `, [text](url), ==highlight==.

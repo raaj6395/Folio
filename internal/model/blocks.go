@@ -45,6 +45,10 @@ var registry = map[string]func() data{
 	"numbered":   func() data { return &List{} },
 	"callout":    func() data { return &Callout{} },
 	"code":       func() data { return &Code{} },
+	"table":      func() data { return &Table{} },
+	"qa":         func() data { return &QA{} },
+	"fill_in":    func() data { return &FillIn{} },
+	"spacer":     func() data { return &Spacer{} },
 	"divider":    func() data { return &Empty{} },
 	"page_break": func() data { return &Empty{} },
 }
@@ -294,6 +298,96 @@ func (c *Code) summary() string {
 	first, _, _ := strings.Cut(strings.TrimSpace(c.Code), "\n")
 	return fmt.Sprintf("code(%s): %s", c.Language, first)
 }
+
+type Table struct {
+	Columns []string   `json:"columns"`
+	Rows    [][]string `json:"rows"`
+	Caption string     `json:"caption,omitempty"`
+}
+
+func (t *Table) validate() error {
+	if n := len(t.Columns); n < 2 || n > 6 {
+		return fmt.Errorf("columns has %d entries, must be 2-6", n)
+	}
+	if len(t.Rows) == 0 {
+		return errors.New(`field "rows" must contain at least one row`)
+	}
+	if len(t.Rows) > 25 {
+		return fmt.Errorf("table has %d rows, max 25; split it into several tables", len(t.Rows))
+	}
+	for i, r := range t.Rows {
+		if len(r) != len(t.Columns) {
+			return fmt.Errorf("row %d has %d cells, expected %d (columns: %s)", i, len(r), len(t.Columns), strings.Join(t.Columns, ", "))
+		}
+	}
+	return nil
+}
+func (t *Table) doc() map[string]any {
+	cols := [][]Span{}
+	for _, c := range t.Columns {
+		cols = append(cols, ParseInline(c))
+	}
+	rows := [][][]Span{}
+	for _, r := range t.Rows {
+		row := [][]Span{}
+		for _, c := range r {
+			row = append(row, ParseInline(c))
+		}
+		rows = append(rows, row)
+	}
+	return map[string]any{"columns": cols, "rows": rows, "caption": ParseInline(t.Caption)}
+}
+func (t *Table) summary() string {
+	return fmt.Sprintf("table: %dx%d %s", len(t.Columns), len(t.Rows), strings.Join(t.Columns, "/"))
+}
+
+type QA struct {
+	Question   string `json:"question"`
+	Answer     string `json:"answer"`
+	HideAnswer bool   `json:"hide_answer,omitempty"`
+}
+
+func (q *QA) validate() error {
+	if err := required("question", q.Question); err != nil {
+		return err
+	}
+	return required("answer", q.Answer)
+}
+func (q *QA) doc() map[string]any {
+	return map[string]any{"question": ParseInline(q.Question), "answer": ParseInline(q.Answer), "hide_answer": q.HideAnswer}
+}
+func (q *QA) summary() string { return "Q: " + plain(q.Question) }
+
+type FillIn struct {
+	Prompt string `json:"prompt"`
+	Lines  int    `json:"lines"`
+}
+
+func (f *FillIn) validate() error {
+	if f.Lines < 1 || f.Lines > 15 {
+		return fmt.Errorf("lines must be 1-15, got %d", f.Lines)
+	}
+	return required("prompt", f.Prompt)
+}
+func (f *FillIn) doc() map[string]any {
+	return map[string]any{"prompt": ParseInline(f.Prompt), "lines": f.Lines}
+}
+func (f *FillIn) summary() string {
+	return fmt.Sprintf("fill in (%d lines): %s", f.Lines, plain(f.Prompt))
+}
+
+type Spacer struct {
+	Size string `json:"size"`
+}
+
+func (s *Spacer) validate() error {
+	if !slices.Contains([]string{"small", "medium", "large"}, s.Size) {
+		return fmt.Errorf(`size must be "small", "medium" or "large", got %q`, s.Size)
+	}
+	return nil
+}
+func (s *Spacer) doc() map[string]any { return map[string]any{"size": s.Size} }
+func (s *Spacer) summary() string     { return "spacer " + s.Size }
 
 type Empty struct{}
 

@@ -80,3 +80,9 @@
 - **Why:** Spec 6.4/6.5.
 - **Alternatives considered:** a fixed width for measuring (breaks inside `two_column`).
 - **Affects interface/behaviour?** no — **User approved?** n.a.
+
+## 2026-10-22 — Hidden Q&A answers
+- **Decision:** With `hide_answer: true`, the card shows the question and "Answer: upside down at the bottom of this page". The answer is emitted as `place(bottom, float: true)` rotated 180°, so hidden answers stack at the bottom of the page where the card lands, numbered `A<n>` to match `Q<n>`.
+- **Why:** Spec 5.3 offers two options. Upside down keeps the answer in the notes for self-checking; an empty answer area would lose it.
+- **Alternatives considered:** an empty answer area.
+- **Affects interface/behaviour?** yes (picks the spec's option 1) — **User approved?** n.a. (spec said pick one and record it)

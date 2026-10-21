@@ -21,6 +21,8 @@
     key_point: (accent: rgb("#dc2626"), fill: rgb("#fef1f1"), label: "Key point"),
   ),
   callout-radius: 3pt,
+  qa-accent: rgb("#0f766e"),
+  fill-line: rgb("#9ca3af"),
   paper-ink: rgb("#e5e7eb"),
   margin-line: none,
 )
