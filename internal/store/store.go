@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -216,7 +217,7 @@ func (s *Store) mutate(id string, expected *int, tool, summary string, base int,
 	if err != nil {
 		return nb, nil, err
 	}
-	next, err := fn(&nb, old)
+	next, err := fn(&nb, slices.Clone(old))
 	if err != nil {
 		return nb, nil, err
 	}

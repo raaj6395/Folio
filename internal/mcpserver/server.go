@@ -73,6 +73,7 @@ func anySlice(ss []string) []any {
 func schemaFor[T any]() *jsonschema.Schema {
 	s, err := jsonschema.For[T](&jsonschema.ForOptions{TypeSchemas: map[reflect.Type]*jsonschema.Schema{
 		reflect.TypeFor[json.RawMessage](): blockSchema,
+		reflect.TypeFor[model.Block]():     {Type: "object", Description: "A block: id, type and its type-specific fields"},
 	}})
 	if err != nil {
 		panic(err)
@@ -81,7 +82,11 @@ func schemaFor[T any]() *jsonschema.Schema {
 }
 
 func addTool[In, Out any](s *mcp.Server, name, desc string, h mcp.ToolHandlerFor[In, Out]) {
-	mcp.AddTool(s, &mcp.Tool{Name: name, Description: desc, InputSchema: schemaFor[In]()}, func(ctx context.Context, req *mcp.CallToolRequest, in In) (*mcp.CallToolResult, Out, error) {
+	tool := &mcp.Tool{Name: name, Description: desc, InputSchema: schemaFor[In]()}
+	if reflect.TypeFor[Out]() != reflect.TypeFor[any]() {
+		tool.OutputSchema = schemaFor[Out]()
+	}
+	mcp.AddTool(s, tool, func(ctx context.Context, req *mcp.CallToolRequest, in In) (*mcp.CallToolResult, Out, error) {
 		res, out, err := h(ctx, req, in)
 		if err != nil {
 			slog.Warn("tool error", "tool", name, "err", err)
@@ -105,6 +110,7 @@ func New(st *store.Store, lb *layout.Builder, home string) *mcp.Server {
 	srv := &Server{st: st, lb: lb, home: home}
 	s := mcp.NewServer(&mcp.Implementation{Name: "folio", Version: "0.1.0"}, &mcp.ServerOptions{Instructions: instructions})
 	srv.register(s)
+	srv.registerEdit(s)
 	s.AddResource(&mcp.Resource{URI: "folio://guide", Name: "authoring-guide", Title: "Folio authoring guide", MIMEType: "text/markdown"},
 		func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
 			return &mcp.ReadResourceResult{Contents: []*mcp.ResourceContents{{URI: "folio://guide", MIMEType: "text/markdown", Text: guide}}}, nil

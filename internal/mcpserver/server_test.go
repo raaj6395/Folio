@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -143,5 +144,82 @@ func TestM1Flow(t *testing.T) {
 	g := c.raw("get_authoring_guide", map[string]any{})
 	if !strings.Contains(g.Content[0].(*mcp.TextContent).Text, "Block types") {
 		t.Fatal("guide missing")
+	}
+}
+
+func (c *client) summaries(id string) string {
+	var out Outline
+	c.call("get_outline", map[string]any{"notebook_id": id}, &out)
+	var s []string
+	for _, b := range out.Blocks {
+		s = append(s, b.Summary)
+	}
+	return strings.Join(s, "|")
+}
+
+func TestM2Editing(t *testing.T) {
+	c := newClient(t)
+	var nb NotebookInfo
+	c.call("create_notebook", map[string]any{"title": "Edit"}, &nb)
+	var res MutationResult
+	c.call("append_blocks", map[string]any{"notebook_id": nb.ID, "blocks": blocksArg(`[
+		{"type":"paragraph","text":"a"},{"type":"paragraph","text":"b"},{"type":"paragraph","text":"c"}]`)}, &res)
+	a, b, cc := res.ChangedBlockIDs[0], res.ChangedBlockIDs[1], res.ChangedBlockIDs[2]
+
+	c.call("insert_blocks", map[string]any{"notebook_id": nb.ID, "after_block_id": a, "blocks": blocksArg(`[{"type":"paragraph","text":"a2"}]`)}, &res)
+	c.call("insert_blocks", map[string]any{"notebook_id": nb.ID, "after_block_id": "start", "blocks": blocksArg(`[{"type":"paragraph","text":"s"}]`)}, &res)
+	if got := c.summaries(nb.ID); got != "s|a|a2|b|c" {
+		t.Fatalf("after inserts: %s", got)
+	}
+
+	c.call("update_block", map[string]any{"notebook_id": nb.ID, "block_id": b, "block": json.RawMessage(`{"type":"heading","level":2,"text":"B"}`)}, &res)
+	if got := c.summaries(nb.ID); got != "s|a|a2|H2 B|c" {
+		t.Fatalf("after update: %s", got)
+	}
+
+	c.call("move_blocks", map[string]any{"notebook_id": nb.ID, "block_ids": []string{cc, a}, "after_block_id": "start"}, &res)
+	if got := c.summaries(nb.ID); got != "a|c|s|a2|H2 B" {
+		t.Fatalf("after move: %s", got)
+	}
+	if res.ChangedBlockIDs[0] != a {
+		t.Fatalf("move should report document order: %v", res.ChangedBlockIDs)
+	}
+
+	c.call("delete_blocks", map[string]any{"notebook_id": nb.ID, "block_ids": []string{b}}, &res)
+	if got := c.summaries(nb.ID); got != "a|c|s|a2" {
+		t.Fatalf("after delete: %s", got)
+	}
+	if msg := c.callErr("delete_blocks", map[string]any{"notebook_id": nb.ID, "block_ids": []string{b}}); !strings.Contains(msg, "not found: "+b) {
+		t.Fatal(msg)
+	}
+
+	var rb map[string][]ReadBlock
+	c.call("read_blocks", map[string]any{"notebook_id": nb.ID, "from_block_id": cc, "count": 2}, &rb)
+	if len(rb["blocks"]) != 2 || rb["blocks"][0].Block.ID != cc || rb["blocks"][0].Page != 1 {
+		t.Fatalf("read: %+v", rb)
+	}
+
+	c.call("undo", map[string]any{"notebook_id": nb.ID}, &res)
+	if got := c.summaries(nb.ID); got != "a|c|s|a2|H2 B" {
+		t.Fatalf("undo delete: %s", got)
+	}
+	c.call("undo", map[string]any{"notebook_id": nb.ID}, &res)
+	if got := c.summaries(nb.ID); got != "s|a|a2|H2 B|c" {
+		t.Fatalf("undo move: %s", got)
+	}
+
+	var vs map[string][]map[string]any
+	c.call("list_versions", map[string]any{"notebook_id": nb.ID, "limit": 3}, &vs)
+	if len(vs["versions"]) != 3 || vs["versions"][0]["tool_name"] != "undo" {
+		t.Fatalf("versions: %+v", vs)
+	}
+	c.call("restore_version", map[string]any{"notebook_id": nb.ID, "version": 2}, &res)
+	if got := c.summaries(nb.ID); got != "a|b|c" {
+		t.Fatalf("restore: %s", got)
+	}
+
+	stale := 1
+	if msg := c.callErr("append_blocks", map[string]any{"notebook_id": nb.ID, "expected_version": stale, "blocks": blocksArg(`[{"type":"divider"}]`)}); !strings.Contains(msg, fmt.Sprintf("notebook is at version %d", res.Version)) {
+		t.Fatal(msg)
 	}
 }
