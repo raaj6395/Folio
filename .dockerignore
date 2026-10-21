@@ -1,0 +1,7 @@
+bin/
+build/
+.env
+.git
+*.md
+!README.md
+docs/screenshots/

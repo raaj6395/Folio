@@ -156,3 +156,10 @@
 - **Alternatives considered:** a separate Postgres implementation behind an interface (two copies of every query); JSONB/TIMESTAMPTZ columns; stateless HTTP sessions (fine too, but stateful is the SDK default and works with Claude Code); a schema per test package (more setup than `-p 1`).
 - **Notes:** the Alpine image's default collation already sorts by bytes (musl), so a byte-order test alone can't catch a missing `COLLATE "C"`. A Postgres-only test asserts the column's collation instead. ICU collation (`und-x-icu`) gives `_,a,a0b,Z,z1` versus byte order `Z,_,a,a0b,z1`, showing the risk on glibc/managed Postgres.
 - **Affects interface/behaviour?** yes (new `http` command, additive tool fields) — **User approved?** yes (CLOUD_BUILD_SPEC.md, requested by the user)
+
+## 2026-10-22 — Render deploy via Docker, no auth yet
+- **Decision:** Multi-stage `Dockerfile`: `golang:1.26-alpine` builds a static binary (`CGO_ENABLED=0`; the SQLite driver is pure Go). Typst 0.15.1 comes from its official `x86_64-unknown-linux-musl` release, and the runtime is `alpine:3.22`, running as a non-root user. Fonts and templates are embedded in the binary. `FOLIO_HOME=/tmp/folio` holds only the disposable build cache. `folio http` listens on `0.0.0.0:$PORT` when `PORT` is set (Render) and `FOLIO_HTTP_ADDR` isn't. The container runs `folio http --unsafe-public`.
+- **Why:** Render's native Go runtime has no Typst. The user asked to deploy now **without an auth layer**.
+- **Risk accepted by the user:** the public service has no authentication. Anyone with the URL can read and change every notebook. Adding auth is the next step before sharing the URL or connecting it in claude.ai long-term.
+- **Alternatives considered:** a token/secret-path lock (deferred at the user's request).
+- **Affects interface/behaviour?** yes — **User approved?** yes (user explicitly said no auth for now, 2026-10-22)

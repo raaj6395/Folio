@@ -126,6 +126,9 @@ func main() {
 		unsafe := fs.Bool("unsafe-public", false, "allow a non-loopback listen address (there is NO authentication yet)")
 		fs.Parse(os.Args[2:])
 		addr := os.Getenv("FOLIO_HTTP_ADDR")
+		if addr == "" && os.Getenv("PORT") != "" {
+			addr = "0.0.0.0:" + os.Getenv("PORT")
+		}
 		if addr == "" {
 			addr = "127.0.0.1:8080"
 		}
