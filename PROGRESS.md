@@ -1,8 +1,8 @@
 # Folio — Progress
 
 **Last updated:** 2026-10-22 00:30
-**Current milestone:** Cloud Phase 1 complete (CLOUD_BUILD_SPEC.md)
-**Current task:** none — next would be Cloud Phase 2 (Render deploy) or Phase 3 (auth)
+**Current milestone:** Deployed on Render (https://folio-1i2o.onrender.com); next: Cloud Phase 2 (CLOUD_PHASE2_SPEC.md)
+**Current task:** none — waiting for go-ahead on CLOUD_PHASE2_SPEC.md
 **Overall status:** Needs user input
 
 ## Status summary
@@ -105,6 +105,11 @@ Legend: [ ] todo · [~] in progress · [x] done · [!] blocked
 | 2026-10-22 | dotgrid | Good (checked by Claude) | none |
 
 ## Session log
+### 2026-10-22 — Session 1 (Render deploy)
+- Did: Dockerfile (Folio + Typst 0.15.1), `$PORT` support, `RENDER_EXTERNAL_URL` fallback for links. The user created Render Postgres + a Docker web service (first attempt used the native Go runtime and was recreated as Docker). Fixed the MCP 403 on Render (SDK localhost protection, now off only in public mode). No auth (user decision).
+- Verified: the container ran locally like Render (create/append/diagram/render/PDF). Live: `/healthz` ok (postgres); MCP initialize 200 after the fix; Claude Code `folio-render` session made `n_wh2y2onk` end to end (~27s); PDF, viewer (0.27s) and page PNG (1.9s) served.
+- Problems: native Go runtime first (no Typst, wrong build path); 403 from DNS-rebinding protection; `export_pdf` reports a container path (fix in Phase 2 D1.1).
+- Next: CLOUD_PHASE2_SPEC.md (remote export, restart-safe sessions, deploy identity, SQLite→Postgres import, render.yaml, password rotation).
 ### 2026-10-22 — Session 1 (Cloud Phase 1)
 - Did: C0–C4 from CLOUD_BUILD_SPEC.md.
 - Verified: see the Cloud Phase 1 checklist. `make test` (sqlite) and `make test-pg` (sqlite + postgres) green.

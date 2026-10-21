@@ -163,3 +163,9 @@
 - **Risk accepted by the user:** the public service has no authentication. Anyone with the URL can read and change every notebook. Adding auth is the next step before sharing the URL or connecting it in claude.ai long-term.
 - **Alternatives considered:** a token/secret-path lock (deferred at the user's request).
 - **Affects interface/behaviour?** yes — **User approved?** yes (user explicitly said no auth for now, 2026-10-22)
+
+## 2026-10-22 — MCP 403 on Render: DNS-rebinding protection off in public mode only
+- **Decision:** `httpserver.Handler` takes a `public` flag. When `folio http` listens on a non-loopback address (`--unsafe-public`, i.e. Render), it sets `StreamableHTTPOptions.DisableLocalhostProtection`. On loopback the protection stays on.
+- **Why:** On Render every `/mcp` request returned 403. Reproduced locally: the same request succeeds with `Host: localhost` and gets 403 with `Host: folio-1i2o.onrender.com`. The go-sdk rejects requests that arrive on a localhost connection with a non-localhost Host header. Render's proxy delivers public traffic that way. The protection only guards local-only servers against DNS rebinding, which doesn't apply to a deliberately public service.
+- **Alternatives considered:** rewriting the Host header in middleware (it hides the real host from the SDK for no benefit).
+- **Affects interface/behaviour?** no — **User approved?** n.a.
