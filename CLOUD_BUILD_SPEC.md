@@ -52,7 +52,7 @@ Claude Code ──HTTP (MCP)──► folio http  (runs on your Mac, 127.0.0.1:8
 |---|---|---|
 | `FOLIO_DB_URL` | `postgres://folio:folio@localhost:5433/folio?sslmode=disable` | If set, use Postgres. If unset, use SQLite in `FOLIO_HOME` (today's behaviour). |
 | `FOLIO_HTTP_ADDR` | `127.0.0.1:8080` | Listen address for `folio http`. Default `127.0.0.1:8080`. |
-| `FOLIO_PUBLIC_URL` | `http://127.0.0.1:8080` | Base URL used in links that tools return (viewer, PDF download). Defaults to `http://` + `FOLIO_HTTP_ADDR`. |
+| `FOLIO_PUBLIC_URL` | `http://127.0.0.1:8080` | Base URL used in links that tools return (viewer, PDF download). Defaults to Render's `RENDER_EXTERNAL_URL`, then `http://` + `FOLIO_HTTP_ADDR`. |
 | `FOLIO_HOME` | `~/.folio` | Unchanged: build cache, logs, SQLite file. |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `folio` / `folio` / `folio` | Read by the Postgres container. |
 | `FOLIO_TEST_DB_URL` | same form as `FOLIO_DB_URL`, database `folio_test` | Postgres tests run only when this is set. |

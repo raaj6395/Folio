@@ -140,6 +140,9 @@ func main() {
 		}
 		public := os.Getenv("FOLIO_PUBLIC_URL")
 		if public == "" {
+			public = os.Getenv("RENDER_EXTERNAL_URL")
+		}
+		if public == "" {
 			public = "http://" + addr
 		}
 		if _, err := doctor.TypstVersion(); err != nil {
