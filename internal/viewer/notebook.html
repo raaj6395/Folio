@@ -23,7 +23,7 @@
 <header>
   <a class="home" href="/">← Notebooks</a>
   <span id="title">{{.Title}}</span>
-  <span class="meta">theme <b id="theme">{{.Theme}}</b></span>
+  <span class="meta">theme <b id="theme">{{.Theme}} · {{.Mode}}</b></span>
   <span class="meta">v<b id="version">{{.Version}}</b></span>
   <span class="meta" id="ago"></span>
   <span class="meta" id="status">connecting…</span>
@@ -40,7 +40,7 @@ let first = true;
 function apply(s) {
   document.getElementById("title").textContent = s.title;
   document.title = s.title + " · Folio";
-  document.getElementById("theme").textContent = s.theme;
+  document.getElementById("theme").textContent = s.theme + " · " + s.mode;
   document.getElementById("version").textContent = s.version;
   updatedAt = new Date(s.updated_at);
   tick();

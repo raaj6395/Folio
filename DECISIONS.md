@@ -122,3 +122,9 @@
 - **Why:** Spec 3.5: tune the guide using real sessions.
 - **Alternatives considered:** a "fit to remaining space" diagram size (left out; free-space numbers let the AI pick a size).
 - **Affects interface/behaviour?** yes (extra fields in mutation results) — **User approved?** n.a. (additive)
+
+## 2026-10-22 — Dark mode by default
+- **Decision:** Each notebook has a `mode` (`dark` | `light`) separate from the theme, so every theme has both looks. New notebooks default to `dark`. `create_notebook` takes `mode`. `set_theme` takes an optional `mode` (omitted = unchanged). `preview_diagram` takes `mode`. `list_themes` lists the modes. Migration 2 adds `mode` to `notebooks` and `snapshots` with SQL default `light`, so notebooks made before this change stay as they looked, and undo/restore covers mode changes. Each theme file exports a `dark` dict that `main.typ` merges over `theme` (page fill, ink, callout tints, table/code colours, paper ink, margin line). Dark code uses a small bundled TextMate theme (`templates/themes/code-dark.tmTheme`). Dark diagrams use D2 theme 200 (Dark Mauve), with D2's canvas rect removed so they sit directly on the page. The mode is part of the build cache key, the viewer page signatures and the server instructions/guide ("use light only when the user asks").
+- **Why:** User request: dark by default, light when asked.
+- **Alternatives considered:** separate `clean-dark`/`notebook-dark` themes (doubles the theme list and can't switch modes independently of the theme).
+- **Affects interface/behaviour?** yes (new `mode` field; default look is dark) — **User approved?** yes (user asked for it, 2026-10-22)

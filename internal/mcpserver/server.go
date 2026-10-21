@@ -23,6 +23,8 @@ const instructions = `Folio typesets study notes onto A4 pages.
 
 You write structured blocks (headings, paragraphs, lists, callouts, code, tables, diagrams, Q&A cards); Folio measures text, flows it across pages and handles page breaks. Never think in coordinates.
 
+Notebooks are dark mode by default. If the user asks for light mode (white pages, printing), pass mode "light" to create_notebook, or call set_theme with mode "light" to switch an existing notebook.
+
 Every block has a stable ID (b_xxxxxxxx). Use IDs for small targeted edits instead of rewriting a notebook.
 
 Recommended workflow: get_authoring_guide once → create_notebook → plan an outline → append_blocks section by section → read the layout summary each write returns → render_pages for a page or two to check how it looks → fix problems → export_pdf.`
@@ -175,6 +177,13 @@ func (s *Server) result(ctx context.Context, nb store.Notebook, bs []model.Block
 func validTheme(theme string) error {
 	_, err := layout.ThemeByName(theme)
 	return err
+}
+
+func validMode(mode string) error {
+	if !slices.Contains(layout.Modes, mode) {
+		return fmt.Errorf("unknown mode %q; valid: dark, light", mode)
+	}
+	return nil
 }
 
 func validPaper(paper string) error {

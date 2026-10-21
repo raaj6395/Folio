@@ -1,4 +1,6 @@
 #let theme = (
+  page-bg: white,
+  code-theme: auto,
   body-font: ("Inter",),
   heading-font: ("Inter",),
   mono-font: ("JetBrains Mono",),
@@ -27,4 +29,27 @@
   paper-ink: rgb("#d5d9e0"),
   paper-step: 7mm,
   margin-line: none,
+)
+
+#let dark = (
+  page-bg: rgb("#141925"),
+  code-theme: "themes/code-dark.tmTheme",
+  ink: rgb("#d9dee8"),
+  muted: rgb("#8b93a7"),
+  heading: rgb("#f0f3f9"),
+  accent: rgb("#8ab4f8"),
+  rule: rgb("#3a4257"),
+  code-bg: rgb("#1e2535"),
+  table-header: rgb("#222c40"),
+  highlight: rgb("#6b5310"),
+  callout: (
+    note: (accent: rgb("#6ea8fe"), fill: rgb("#1a2540"), label: "Note"),
+    tip: (accent: rgb("#5fd38d"), fill: rgb("#15301f"), label: "Tip"),
+    warning: (accent: rgb("#f5b14c"), fill: rgb("#33260f"), label: "Warning"),
+    definition: (accent: rgb("#b794f6"), fill: rgb("#261d3d"), label: "Definition"),
+    key_point: (accent: rgb("#f47c7c"), fill: rgb("#361a1d"), label: "Key point"),
+  ),
+  qa-accent: rgb("#4fd1c5"),
+  fill-line: rgb("#4b5568"),
+  paper-ink: rgb("#2a3142"),
 )

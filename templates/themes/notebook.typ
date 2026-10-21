@@ -1,4 +1,6 @@
 #let theme = (
+  page-bg: white,
+  code-theme: auto,
   body-font: ("Kalam",),
   heading-font: ("Kalam",),
   mono-font: ("JetBrains Mono",),
@@ -27,4 +29,28 @@
   paper-ink: rgb("#b9c7e0"),
   paper-step: 8mm,
   margin-line: rgb("#e57373"),
+)
+
+#let dark = (
+  page-bg: rgb("#182030"),
+  code-theme: "themes/code-dark.tmTheme",
+  ink: rgb("#e3e7ef"),
+  muted: rgb("#97a0b5"),
+  heading: rgb("#9cc2ff"),
+  accent: rgb("#8ab4f8"),
+  rule: rgb("#56617a"),
+  code-bg: rgb("#222b3d"),
+  table-header: rgb("#25304a"),
+  highlight: rgb("#6b5310"),
+  callout: (
+    note: (accent: rgb("#7fb2ff"), fill: rgb("#1c2a48cc"), label: "Note"),
+    tip: (accent: rgb("#6ee7a0"), fill: rgb("#17352acc"), label: "Tip"),
+    warning: (accent: rgb("#fbbf6b"), fill: rgb("#3a2a12cc"), label: "Careful!"),
+    definition: (accent: rgb("#c4a5ff"), fill: rgb("#2b2045cc"), label: "Definition"),
+    key_point: (accent: rgb("#ff8f8f"), fill: rgb("#3d1d22cc"), label: "Remember"),
+  ),
+  qa-accent: rgb("#5eead4"),
+  fill-line: rgb("#56617a"),
+  paper-ink: rgb("#2c3850"),
+  margin-line: rgb("#a85454"),
 )

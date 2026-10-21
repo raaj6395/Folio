@@ -2,6 +2,8 @@
 
 Folio lets an AI model (Claude Code or any MCP client) write good-looking study notes on A4 pages. The AI writes structured blocks: headings, paragraphs, lists, callouts, code, tables, D2 diagrams, Q&A cards and fill-in blanks. Folio typesets them with Typst, flows them across pages, and hands the AI feedback (where each block landed, warnings, page images) so it can fix its own layout.
 
+Notes are **dark mode by default**. Ask for light mode ("make it light", "white pages for printing") and Claude creates or switches the notebook with `mode: "light"`. Every theme has both modes. The screenshots below are light mode.
+
 | clean | notebook | dotgrid |
 |---|---|---|
 | ![clean theme](docs/screenshots/clean.png) | ![notebook theme](docs/screenshots/notebook.png) | ![dotgrid theme](docs/screenshots/dotgrid.png) |

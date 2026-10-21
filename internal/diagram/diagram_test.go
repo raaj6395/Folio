@@ -39,3 +39,14 @@ func TestCached(t *testing.T) {
 		t.Fatal("cache keys wrong")
 	}
 }
+
+func TestDarkHasNoCanvas(t *testing.T) {
+	dark, err := Render(context.Background(), "a -> b", Style{ThemeID: 200, Font: "Inter"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	light, _ := Render(context.Background(), "a -> b", Style{Font: "Inter"})
+	if canvas.Match(dark.Data) || !canvas.Match(light.Data) {
+		t.Fatal("dark diagrams must drop the canvas rect; light ones keep it")
+	}
+}

@@ -91,6 +91,10 @@ Legend: [ ] todo · [~] in progress · [x] done · [!] blocked
 | 2026-10-22 | dotgrid | Good (checked by Claude) | none |
 
 ## Session log
+### 2026-10-22 — Session 1 (dark mode, user request)
+- Did: added notebook `mode` (dark default, light on request) across store (migration 2), templates (dark palettes for all 3 themes, dark code highlighting), D2 (dark theme, canvas stripped), MCP tools, guide and viewer.
+- Verified: TestModes (default dark, explicit light, switch via set_theme, mode kept when omitted, undo restores, bad value rejected); kitchen sink builds in all themes × both modes, dark pages inspected; the real DB migrated with all 6 existing notebooks kept light (backup of the pre-migration DB in the session scratchpad).
+- Next: same as before (user checks, M4 decision).
 ### 2026-10-22 — Session 1 (end)
 - Did: M3.1–M3.6. Ran 4 headless Claude note sessions (REST, consistent hashing, Kafka, TCP) and fixed what they and the kitchen sink exposed.
 - Verified: `go vet` clean; all tests green (model, store, layout, diagram, mcpserver, viewer); perf 156ms/10 pages, 303ms/30 pages.

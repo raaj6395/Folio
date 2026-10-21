@@ -329,3 +329,38 @@ func TestTwoColumn(t *testing.T) {
 		t.Fatal("nested IDs must survive a round-trip update of the parent")
 	}
 }
+
+func TestModes(t *testing.T) {
+	c := newClient(t)
+	var dark, light NotebookInfo
+	c.call("create_notebook", map[string]any{"title": "D"}, &dark)
+	c.call("create_notebook", map[string]any{"title": "L", "mode": "light"}, &light)
+	if dark.Mode != "dark" || light.Mode != "light" {
+		t.Fatalf("modes: %s %s", dark.Mode, light.Mode)
+	}
+	var res MutationResult
+	c.call("append_blocks", map[string]any{"notebook_id": dark.ID, "blocks": blocksArg(`[{"type":"paragraph","text":"x"},{"type":"diagram","source":"a -> b"}]`)}, &res)
+	c.call("set_theme", map[string]any{"notebook_id": dark.ID, "theme": "clean", "mode": "light"}, &res)
+	var out Outline
+	c.call("get_outline", map[string]any{"notebook_id": dark.ID}, &out)
+	if out.Mode != "light" || out.Theme != "clean" {
+		t.Fatalf("after switch: %+v", out)
+	}
+	c.call("set_theme", map[string]any{"notebook_id": dark.ID, "theme": "notebook"}, &res)
+	c.call("get_outline", map[string]any{"notebook_id": dark.ID}, &out)
+	if out.Mode != "light" {
+		t.Fatal("set_theme without mode must keep the mode")
+	}
+	c.call("undo", map[string]any{"notebook_id": dark.ID}, &res)
+	c.call("undo", map[string]any{"notebook_id": dark.ID}, &res)
+	c.call("get_outline", map[string]any{"notebook_id": dark.ID}, &out)
+	if out.Mode != "dark" {
+		t.Fatalf("undo should restore dark, got %s", out.Mode)
+	}
+	if msg := c.callErr("create_notebook", map[string]any{"title": "X", "mode": "sepia"}); !strings.Contains(msg, "valid: dark, light") {
+		t.Fatal(msg)
+	}
+	if r := c.raw("preview_diagram", map[string]any{"source": "a -> b", "mode": "light"}); r.IsError {
+		t.Fatal("light preview failed")
+	}
+}

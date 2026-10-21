@@ -71,9 +71,14 @@ func Render(ctx context.Context, src string, st Style) (*SVG, error) {
 		return nil, fmt.Errorf("D2 render error: %v", err)
 	}
 	out = retarget(out, st.Font)
+	if st.ThemeID >= 200 {
+		out = canvas.ReplaceAll(out, nil)
+	}
 	w, h := size(out)
 	return &SVG{Data: out, WidthPx: w, HeightPx: h}, nil
 }
+
+var canvas = regexp.MustCompile(`<rect x="[-\d.]+" y="[-\d.]+" width="[\d.]+" height="[\d.]+" rx="[\d.]+" fill="#[0-9A-Fa-f]+" class=" fill-N7" stroke-width="0" />`)
 
 var (
 	fontFace   = regexp.MustCompile(`@font-face\s*\{[^}]*\}`)
@@ -142,7 +147,7 @@ func size(svg []byte) (float64, float64) {
 }
 
 func Key(src string, st Style) string {
-	sum := sha256.Sum256([]byte(fmt.Sprintf("r2|%d|%t|%s|%s", st.ThemeID, st.Sketch, st.Font, src)))
+	sum := sha256.Sum256([]byte(fmt.Sprintf("r3|%d|%t|%s|%s", st.ThemeID, st.Sketch, st.Font, src)))
 	return hex.EncodeToString(sum[:8])
 }
 

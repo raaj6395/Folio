@@ -30,6 +30,7 @@ type NotebookInfo struct {
 	Title      string    `json:"title"`
 	Theme      string    `json:"theme"`
 	Paper      string    `json:"paper"`
+	Mode       string    `json:"mode"`
 	Version    int       `json:"version"`
 	PageCount  int       `json:"page_count"`
 	BlockCount int       `json:"block_count"`
@@ -41,7 +42,7 @@ func (s *Server) info(ctx context.Context, nb store.Notebook) (NotebookInfo, err
 	if err != nil {
 		return NotebookInfo{}, err
 	}
-	info := NotebookInfo{ID: nb.ID, Title: nb.Title, Theme: nb.Theme, Paper: nb.Paper, Version: nb.Version, BlockCount: len(bs), UpdatedAt: nb.UpdatedAt}
+	info := NotebookInfo{ID: nb.ID, Title: nb.Title, Theme: nb.Theme, Paper: nb.Paper, Mode: nb.Mode, Version: nb.Version, BlockCount: len(bs), UpdatedAt: nb.UpdatedAt}
 	if r, err := s.lb.Build(ctx, nb, bs); err == nil {
 		info.PageCount = r.PageCount
 	}
@@ -52,6 +53,7 @@ type createIn struct {
 	Title string `json:"title" jsonschema:"Notebook title, shown in the page header"`
 	Theme string `json:"theme,omitempty" jsonschema:"Visual theme; default clean. See list_themes"`
 	Paper string `json:"paper,omitempty" jsonschema:"Paper background: plain, ruled, dotted or grid. Defaults to the theme's paper"`
+	Mode  string `json:"mode,omitempty" jsonschema:"dark (default) or light. Use light only when the user asks for a light/white look or wants to print"`
 }
 
 type appendIn struct {
@@ -73,6 +75,7 @@ type Outline struct {
 	Title      string         `json:"title"`
 	Version    int            `json:"version"`
 	Theme      string         `json:"theme"`
+	Mode       string         `json:"mode"`
 	PageCount  int            `json:"page_count"`
 	Blocks     []OutlineEntry `json:"blocks"`
 }
@@ -100,17 +103,20 @@ type previewIn struct {
 	Source string `json:"source" jsonschema:"D2 diagram source"`
 	Theme  string `json:"theme,omitempty" jsonschema:"Theme whose diagram style to use; default clean"`
 	Size   string `json:"size,omitempty" jsonschema:"full, half or small (default full); affects the reported on-page size"`
+	Mode   string `json:"mode,omitempty" jsonschema:"dark (default) or light, to match the notebook"`
 }
 
 type ThemesOut struct {
 	Themes []layout.Theme `json:"themes"`
 	Papers []string       `json:"papers"`
+	Modes  []string       `json:"modes"`
 }
 
 type setThemeIn struct {
 	NotebookID      string `json:"notebook_id" jsonschema:"ID of the notebook"`
 	Theme           string `json:"theme" jsonschema:"Theme name from list_themes"`
 	Paper           string `json:"paper,omitempty" jsonschema:"plain, ruled, dotted or grid; default: the theme's paper"`
+	Mode            string `json:"mode,omitempty" jsonschema:"dark or light; omit to keep the current mode"`
 	ExpectedVersion *int   `json:"expected_version,omitempty" jsonschema:"Reject unless the notebook is at this version"`
 }
 
@@ -159,7 +165,13 @@ func (s *Server) register(m *mcp.Server) {
 			if err := validPaper(in.Paper); err != nil {
 				return nil, NotebookInfo{}, err
 			}
-			nb, err := s.st.CreateNotebook(in.Title, in.Theme, in.Paper)
+			if in.Mode == "" {
+				in.Mode = "dark"
+			}
+			if err := validMode(in.Mode); err != nil {
+				return nil, NotebookInfo{}, err
+			}
+			nb, err := s.st.CreateNotebook(in.Title, in.Theme, in.Paper, in.Mode)
 			if err != nil {
 				return nil, NotebookInfo{}, err
 			}
@@ -191,7 +203,7 @@ func (s *Server) register(m *mcp.Server) {
 			if err != nil {
 				return nil, Outline{}, err
 			}
-			out := Outline{NotebookID: nb.ID, Title: nb.Title, Version: nb.Version, Theme: nb.Theme, PageCount: r.PageCount, Blocks: []OutlineEntry{}}
+			out := Outline{NotebookID: nb.ID, Title: nb.Title, Version: nb.Version, Theme: nb.Theme, Mode: nb.Mode, PageCount: r.PageCount, Blocks: []OutlineEntry{}}
 			for _, b := range bs {
 				out.Blocks = append(out.Blocks, OutlineEntry{ID: b.ID, Type: b.Type, Page: r.Page(b.ID), Summary: b.Summary()})
 				for _, k := range b.Children() {
@@ -255,7 +267,13 @@ func (s *Server) register(m *mcp.Server) {
 			if in.Size != "full" && in.Size != "half" && in.Size != "small" {
 				return nil, nil, fmt.Errorf(`size must be "full", "half" or "small", got %q`, in.Size)
 			}
-			png, w, h, pt, err := s.lb.PreviewPNG(ctx, in.Source, th, in.Size)
+			if in.Mode == "" {
+				in.Mode = "dark"
+			}
+			if err := validMode(in.Mode); err != nil {
+				return nil, nil, err
+			}
+			png, w, h, pt, err := s.lb.PreviewPNG(ctx, in.Source, th, in.Mode, in.Size)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -278,10 +296,10 @@ func (s *Server) register(m *mcp.Server) {
 
 	addTool(m, "list_themes", "List available themes and paper backgrounds.",
 		func(ctx context.Context, _ *mcp.CallToolRequest, _ empty) (*mcp.CallToolResult, ThemesOut, error) {
-			return nil, ThemesOut{Themes: layout.Themes, Papers: papers}, nil
+			return nil, ThemesOut{Themes: layout.Themes, Papers: papers, Modes: layout.Modes}, nil
 		})
 
-	addTool(m, "set_theme", "Change a notebook's theme and optionally its paper. If paper is omitted, the theme's default paper is used.",
+	addTool(m, "set_theme", "Change a notebook's theme, paper and/or mode (dark or light). If paper is omitted, the theme's default paper is used; if mode is omitted it stays as it is. To only switch dark/light, pass the current theme and the new mode.",
 		func(ctx context.Context, _ *mcp.CallToolRequest, in setThemeIn) (*mcp.CallToolResult, MutationResult, error) {
 			if err := validTheme(in.Theme); err != nil {
 				return nil, MutationResult{}, err
@@ -292,9 +310,17 @@ func (s *Server) register(m *mcp.Server) {
 			if err := validPaper(in.Paper); err != nil {
 				return nil, MutationResult{}, err
 			}
-			res, err := s.mutate(ctx, in.NotebookID, in.ExpectedVersion, "set_theme", fmt.Sprintf("theme %s, paper %s", in.Theme, in.Paper),
+			if in.Mode != "" {
+				if err := validMode(in.Mode); err != nil {
+					return nil, MutationResult{}, err
+				}
+			}
+			res, err := s.mutate(ctx, in.NotebookID, in.ExpectedVersion, "set_theme", fmt.Sprintf("theme %s, paper %s, mode %s", in.Theme, in.Paper, in.Mode),
 				func(nb *store.Notebook, bs []model.Block) ([]model.Block, []string, error) {
 					nb.Theme, nb.Paper = in.Theme, in.Paper
+					if in.Mode != "" {
+						nb.Mode = in.Mode
+					}
 					return bs, nil, nil
 				})
 			return nil, res, err

@@ -10,6 +10,9 @@ Folio is a typesetter. You write **blocks**; Folio flows them onto A4 pages. You
 5. `render_pages` on 1–2 pages to see them. Fix what looks wrong.
 6. `export_pdf` when done.
 
+## Dark and light mode
+Every theme comes in dark (the default) and light. Create in light mode only when the user asks for it: `create_notebook` with `"mode": "light"`. Switch later with `set_theme` (`"mode": "light"` or `"dark"`); the content doesn't change.
+
 ## Inline text
 Text fields accept only: `**bold**`, `*italic*`, `` `code` ``, `[text](url)`, `==highlight==`. Anything else is printed literally, so you never need to escape characters.
 

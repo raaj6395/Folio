@@ -160,10 +160,10 @@ var templateHash = func() string {
 	return hex.EncodeToString(h.Sum(nil))[:8]
 }()
 
-const renderVersion = "r2"
+const renderVersion = "r3"
 
 func key(nb store.Notebook) string {
-	return fmt.Sprintf("v%d-%s-%s-t%s", nb.Version, nb.Theme, nb.Paper, templateHash)
+	return fmt.Sprintf("v%d-%s-%s-%s-t%s", nb.Version, nb.Theme, nb.Paper, nb.Mode, templateHash)
 }
 
 func (b *Builder) Build(ctx context.Context, nb store.Notebook, blocks []model.Block) (*Result, error) {
@@ -192,11 +192,11 @@ func (b *Builder) build(ctx context.Context, nb store.Notebook, blocks []model.B
 	if err != nil {
 		return nil, err
 	}
-	docs, dwarns, err := b.docBlocks(ctx, dir, th, blocks)
+	docs, dwarns, err := b.docBlocks(ctx, dir, th.D2For(nb.Mode), blocks)
 	if err != nil {
 		return nil, err
 	}
-	doc := map[string]any{"title": nb.Title, "theme": nb.Theme, "paper": nb.Paper, "blocks": docs}
+	doc := map[string]any{"title": nb.Title, "theme": nb.Theme, "paper": nb.Paper, "mode": nb.Mode, "blocks": docs}
 	js, _ := json.Marshal(doc)
 	if err := os.WriteFile(filepath.Join(dir, "doc.json"), js, 0o644); err != nil {
 		return nil, err

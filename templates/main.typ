@@ -1,6 +1,6 @@
 #let doc = json("doc.json")
-#import ("themes/" + doc.theme + ".typ"): theme
-#let t = theme
+#import ("themes/" + doc.theme + ".typ"): theme, dark
+#let t = if doc.at("mode", default: "light") == "dark" { theme + dark } else { theme }
 
 #let paper-background = {
   let ink = t.paper-ink
@@ -28,6 +28,7 @@
 #set page(
   paper: "a4",
   margin: (x: 18mm, y: 20mm),
+  fill: t.page-bg,
   background: paper-background,
   header: context {
     set text(size: 8pt, fill: t.muted)
@@ -44,6 +45,7 @@
 #set text(font: t.body-font, size: t.body-size, fill: t.ink, lang: "en")
 #set par(leading: t.leading, justify: false)
 #show raw: set text(font: t.mono-font, size: 0.9em)
+#set raw(theme: t.code-theme)
 #show heading: set text(font: t.heading-font, fill: t.heading)
 #show heading.where(level: 1): set text(size: t.heading-sizes.at(0), weight: "bold")
 #show heading.where(level: 2): set text(size: t.heading-sizes.at(1), weight: "bold")

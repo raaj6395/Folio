@@ -37,7 +37,7 @@ func TestViewer(t *testing.T) {
 	}
 	defer st.Close()
 	lb, _ := layout.New(home)
-	nb, _ := st.CreateNotebook("Viewer <test>", "clean", "plain")
+	nb, _ := st.CreateNotebook("Viewer <test>", "clean", "plain", "light")
 	addPara(t, st, nb.ID, "first")
 	srv := httptest.NewServer(New(st, lb))
 	defer srv.Close()

@@ -53,7 +53,7 @@ func texts(t *testing.T, s *Store, id string) string {
 
 func TestMutateUndoRestore(t *testing.T) {
 	s := open(t)
-	nb, err := s.CreateNotebook("T", "clean", "plain")
+	nb, err := s.CreateNotebook("T", "clean", "plain", "light")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestMutateUndoRestore(t *testing.T) {
 
 func TestExpectedVersionConflict(t *testing.T) {
 	s := open(t)
-	nb, _ := s.CreateNotebook("T", "clean", "plain")
+	nb, _ := s.CreateNotebook("T", "clean", "plain", "light")
 	stale := 0
 	_, _, err := s.Mutate(nb.ID, &stale, "x", "x", func(nb *Notebook, bs []model.Block) ([]model.Block, error) { return bs, nil })
 	if !errors.Is(err, ErrConflict) {
@@ -107,7 +107,7 @@ func TestExpectedVersionConflict(t *testing.T) {
 
 func TestSnapshotPruning(t *testing.T) {
 	s := open(t)
-	nb, _ := s.CreateNotebook("T", "clean", "plain")
+	nb, _ := s.CreateNotebook("T", "clean", "plain", "light")
 	for range keepSnapshots + 10 {
 		appendText(t, s, nb.ID, "x")
 	}
@@ -120,7 +120,7 @@ func TestSnapshotPruning(t *testing.T) {
 
 func TestSoftDelete(t *testing.T) {
 	s := open(t)
-	nb, _ := s.CreateNotebook("T", "clean", "plain")
+	nb, _ := s.CreateNotebook("T", "clean", "plain", "light")
 	if err := s.Delete(nb.ID); err != nil {
 		t.Fatal(err)
 	}

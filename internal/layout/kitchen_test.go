@@ -36,18 +36,20 @@ func TestKitchenSinkAllThemes(t *testing.T) {
 			papers = append(papers, "grid")
 		}
 		for _, paper := range papers {
-			nb := store.Notebook{ID: "n_ks_" + th.Name + "_" + paper, Title: "Kitchen sink (" + th.Name + ")", Theme: th.Name, Paper: paper, Version: 1}
-			r, err := b.Build(context.Background(), nb, bs)
-			if err != nil {
-				t.Fatalf("%s/%s: %v", th.Name, paper, err)
-			}
-			if r.PageCount < 3 {
-				t.Errorf("%s/%s: only %d pages", th.Name, paper, r.PageCount)
-			}
-			t.Logf("%s/%s: %d pages, warnings: %v", th.Name, paper, r.PageCount, r.Warnings)
-			if out != "" {
-				os.MkdirAll(out, 0o755)
-				exec.Command("cp", r.PDF, filepath.Join(out, "kitchen-sink-"+th.Name+"-"+paper+".pdf")).Run()
+			for _, mode := range Modes {
+				nb := store.Notebook{ID: "n_ks_" + th.Name + "_" + paper + "_" + mode, Title: "Kitchen sink (" + th.Name + ", " + mode + ")", Theme: th.Name, Paper: paper, Mode: mode, Version: 1}
+				r, err := b.Build(context.Background(), nb, bs)
+				if err != nil {
+					t.Fatalf("%s/%s: %v", th.Name, paper, err)
+				}
+				if r.PageCount < 3 {
+					t.Errorf("%s/%s: only %d pages", th.Name, paper, r.PageCount)
+				}
+				t.Logf("%s/%s/%s: %d pages, warnings: %v", th.Name, paper, mode, r.PageCount, r.Warnings)
+				if out != "" {
+					os.MkdirAll(out, 0o755)
+					exec.Command("cp", r.PDF, filepath.Join(out, "kitchen-sink-"+th.Name+"-"+paper+"-"+mode+".pdf")).Run()
+				}
 			}
 		}
 	}
