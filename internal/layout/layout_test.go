@@ -122,3 +122,33 @@ func TestPagesMatchPDF(t *testing.T) {
 		}
 	}
 }
+
+func TestKeepWithNextAndNoSplit(t *testing.T) {
+	b := builder(t)
+	callout := `{"type":"callout","variant":"note","title":"Box","body":["` + strings.Repeat("Callout text that wraps over several lines. ", 12) + `"]}`
+	for k := 16; k <= 38; k += 2 {
+		var raws []string
+		for range k {
+			raws = append(raws, `{"type":"paragraph","text":"filler line"}`)
+		}
+		raws = append(raws, `{"type":"heading","level":2,"text":"Section"}`, callout)
+		bs := blocks(t, raws...)
+		nb := store.Notebook{ID: fmt.Sprintf("n_k%d", k), Title: "T", Theme: "clean", Paper: "plain", Version: 1}
+		r, err := b.Build(context.Background(), nb, bs)
+		if err != nil {
+			t.Fatal(err)
+		}
+		h, c := r.Blocks[k], r.Blocks[k+1]
+		if h.Page != c.Page {
+			t.Errorf("k=%d: heading on page %d, its callout on page %d", k, h.Page, c.Page)
+		}
+		if c.Page != c.EndPage {
+			t.Errorf("k=%d: callout split across pages %d-%d", k, c.Page, c.EndPage)
+		}
+		for _, w := range r.Warnings {
+			if strings.Contains(w, "last thing on page") {
+				t.Errorf("k=%d: unexpected warning %s", k, w)
+			}
+		}
+	}
+}

@@ -49,6 +49,13 @@
 #let mark(id) = [#metadata((id: id, k: "s"))<blockpos>]
 #let endmark(id) = [#metadata((id: id, k: "e"))<blockpos>]
 
+#let content-height = 257mm
+
+#let nosplit(body, above: auto, below: auto) = layout(size => {
+  let h = measure(block(width: size.width, body)).height
+  block(width: 100%, breakable: h > 0.4 * content-height, above: above, below: below, body)
+})
+
 #let caption(xs) = if xs.len() > 0 {
   align(center, text(size: 0.85em, fill: t.muted, spans(xs)))
 }
@@ -68,14 +75,12 @@
     block(width: 100%, { mark(b.id); items(b.items, ty == "numbered"); endmark(b.id) })
   } else if ty == "callout" {
     let cv = t.callout.at(b.variant)
-    block(
+    nosplit(above: 1.1em, below: 1.1em, block(
       width: 100%,
       fill: cv.fill,
       stroke: (left: 3pt + cv.accent),
       radius: t.callout-radius,
       inset: (x: 10pt, y: 8pt),
-      above: 1.1em,
-      below: 1.1em,
       {
         set par(spacing: 0.65em)
         mark(b.id)
@@ -87,15 +92,15 @@
         }
         endmark(b.id)
       },
-    )
+    ))
   } else if ty == "code" {
-    block(width: 100%, {
+    nosplit(block(width: 100%, {
       mark(b.id)
       block(width: 100%, fill: t.code-bg, radius: 3pt, inset: 8pt,
         raw(b.code, lang: if b.language == "" { none } else { b.language }, block: true))
       caption(b.caption)
       endmark(b.id)
-    })
+    }))
   } else if ty == "divider" {
     block(width: 100%, above: 1em, below: 1em, { mark(b.id); line(length: 100%, stroke: 0.6pt + t.rule); endmark(b.id) })
   } else if ty == "page_break" {

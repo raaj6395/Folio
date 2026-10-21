@@ -99,7 +99,7 @@ func warnings(r *Result) []string {
 			ws = append(ws, fmt.Sprintf("page %d is almost empty (%.0f%% used) in the middle of the notebook; likely a bad break", pg, fill))
 			continue
 		}
-		if fill >= 60 || lastOnPage+1 >= len(bs) {
+		if fill >= 70 || lastOnPage+1 >= len(bs) {
 			continue
 		}
 		next := bs[lastOnPage+1]

@@ -74,3 +74,9 @@
 - **Why:** Typst has no single command that outputs both. Running them in parallel halves wall time.
 - **Alternatives considered:** sequential runs.
 - **Affects interface/behaviour?** no — **User approved?** n.a.
+
+## 2026-10-22 — Pagination via measure + breakable, warnings from block extents
+- **Decision:** Every block emits start and end `<blockpos>` markers. No-split blocks (callout and code now; table, qa, fill_in, diagram later) are wrapped in `nosplit()`, which measures the block at the current width and sets `breakable: height > 40% of the 257mm content height`. Headings are `block(sticky: true)`. Warnings: heading last on a page; block running past the page bottom; a mid-document page under 5% full; and a no-split block that moved to the next page and left the previous page under 70% full (a 60% threshold could never fire, because anything under 40% always fits). Pages ending in an explicit `page_break` are never flagged.
+- **Why:** Spec 6.4/6.5.
+- **Alternatives considered:** a fixed width for measuring (breaks inside `two_column`).
+- **Affects interface/behaviour?** no — **User approved?** n.a.
