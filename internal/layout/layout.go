@@ -3,6 +3,8 @@ package layout
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -47,6 +49,25 @@ type Result struct {
 	Nested       []Pos         `json:"nested,omitempty"`
 	Warnings     []string      `json:"warnings"`
 	Elapsed      time.Duration `json:"-"`
+}
+
+func (r *Result) LastPageFreeMM() float64 {
+	if r.PageCount == 0 {
+		return contentHeightMM
+	}
+	return round1(contentHeightMM * (100 - r.LastPageFill) / 100)
+}
+
+func (r *Result) Height(id string) float64 {
+	for _, p := range r.Blocks {
+		if p.ID == id {
+			if p.EndPage > p.Page {
+				return round1(contentBottomMM - p.YMM + float64(p.EndPage-p.Page-1)*contentHeightMM + p.EndYMM - marginTopMM)
+			}
+			return round1(p.EndYMM - p.YMM)
+		}
+	}
+	return 0
 }
 
 func (r *Result) Page(id string) int {
@@ -126,8 +147,23 @@ func (b *Builder) typst(ctx context.Context, dir string, args ...string) ([]byte
 	return stdout.Bytes(), nil
 }
 
+var templateHash = func() string {
+	h := sha256.New()
+	fs.WalkDir(folio.Templates, "templates", func(p string, d fs.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			data, _ := fs.ReadFile(folio.Templates, p)
+			h.Write(data)
+		}
+		return nil
+	})
+	h.Write([]byte(renderVersion))
+	return hex.EncodeToString(h.Sum(nil))[:8]
+}()
+
+const renderVersion = "r2"
+
 func key(nb store.Notebook) string {
-	return fmt.Sprintf("v%d-%s-%s", nb.Version, nb.Theme, nb.Paper)
+	return fmt.Sprintf("v%d-%s-%s-t%s", nb.Version, nb.Theme, nb.Paper, templateHash)
 }
 
 func (b *Builder) Build(ctx context.Context, nb store.Notebook, blocks []model.Block) (*Result, error) {

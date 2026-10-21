@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -13,9 +14,11 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/raaj6395/folio"
 	"oss.terrastruct.com/d2/d2graph"
 	"oss.terrastruct.com/d2/d2layouts/d2dagrelayout"
 	"oss.terrastruct.com/d2/d2lib"
+	"oss.terrastruct.com/d2/d2renderers/d2fonts"
 	"oss.terrastruct.com/d2/d2renderers/d2svg"
 	"oss.terrastruct.com/d2/lib/log"
 	"oss.terrastruct.com/d2/lib/textmeasure"
@@ -41,7 +44,11 @@ var (
 )
 
 func Render(ctx context.Context, src string, st Style) (*SVG, error) {
-	rulerOnce.Do(func() { ruler, rulerErr = textmeasure.NewRuler() })
+	rulerOnce.Do(func() {
+		if rulerErr = registerFonts(); rulerErr == nil {
+			ruler, rulerErr = textmeasure.NewRuler()
+		}
+	})
 	if rulerErr != nil {
 		return nil, rulerErr
 	}
@@ -51,6 +58,7 @@ func Render(ctx context.Context, src string, st Style) (*SVG, error) {
 	ro := &d2svg.RenderOpts{Pad: &pad, ThemeID: &st.ThemeID, Sketch: &st.Sketch}
 	co := &d2lib.CompileOptions{
 		Ruler:          ruler,
+		FontFamily:     families[st.Font],
 		LayoutResolver: func(string) (d2graph.LayoutGraph, error) { return d2dagrelayout.DefaultLayout, nil },
 	}
 	ctx = log.WithDefault(ctx)
@@ -95,6 +103,32 @@ func retarget(svg []byte, font string) []byte {
 	return svg
 }
 
+var families = map[string]*d2fonts.FontFamily{}
+
+var familyFiles = map[string][4]string{
+	"Inter": {"inter/Inter-Regular.ttf", "inter/Inter-Italic.ttf", "inter/Inter-Bold.ttf", "inter/Inter-SemiBold.ttf"},
+	"Kalam": {"kalam/Kalam-Regular.ttf", "kalam/Kalam-Regular.ttf", "kalam/Kalam-Bold.ttf", "kalam/Kalam-Bold.ttf"},
+}
+
+func registerFonts() error {
+	for name, files := range familyFiles {
+		var ttf [4][]byte
+		for i, f := range files {
+			data, err := fs.ReadFile(folio.Fonts, "fonts/"+f)
+			if err != nil {
+				return err
+			}
+			ttf[i] = data
+		}
+		fam, err := d2fonts.AddFontFamily(name, ttf[0], ttf[1], ttf[2], ttf[3])
+		if err != nil {
+			return fmt.Errorf("registering %s with D2: %w", name, err)
+		}
+		families[name] = fam
+	}
+	return nil
+}
+
 var viewBox = regexp.MustCompile(`viewBox="([-\d.]+) ([-\d.]+) ([\d.]+) ([\d.]+)"`)
 
 func size(svg []byte) (float64, float64) {
@@ -108,7 +142,7 @@ func size(svg []byte) (float64, float64) {
 }
 
 func Key(src string, st Style) string {
-	sum := sha256.Sum256([]byte(fmt.Sprintf("%d|%t|%s|%s", st.ThemeID, st.Sketch, st.Font, src)))
+	sum := sha256.Sum256([]byte(fmt.Sprintf("r2|%d|%t|%s|%s", st.ThemeID, st.Sketch, st.Font, src)))
 	return hex.EncodeToString(sum[:8])
 }
 

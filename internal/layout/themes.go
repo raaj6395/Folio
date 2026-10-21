@@ -111,12 +111,13 @@ func (b *Builder) PreviewPNG(ctx context.Context, src string, th Theme, size str
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	typ := fmt.Sprintf("#set page(width: auto, height: auto, margin: 4mm)\n#image(%q, width: %.1fmm)\n", filepath.Base(path), w)
-	if err := os.WriteFile(filepath.Join(dir, "preview.typ"), []byte(typ), 0o644); err != nil {
+	base := strings.TrimSuffix(filepath.Base(path), ".svg") + "-" + size
+	if err := os.WriteFile(filepath.Join(dir, base+".typ"), []byte(typ), 0o644); err != nil {
 		return nil, 0, 0, 0, err
 	}
-	if _, err := b.typst(ctx, dir, "compile", "preview.typ", "preview.png", "--ppi", "100"); err != nil {
+	if _, err := b.typst(ctx, dir, "compile", base+".typ", base+".png", "--ppi", "100"); err != nil {
 		return nil, 0, 0, 0, err
 	}
-	png, err := os.ReadFile(filepath.Join(dir, "preview.png"))
+	png, err := os.ReadFile(filepath.Join(dir, base+".png"))
 	return png, w, h, pt, err
 }

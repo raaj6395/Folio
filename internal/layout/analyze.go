@@ -22,7 +22,7 @@ func fillPct(mm float64) float64 {
 	return round1(min(100, max(0, (mm-marginTopMM)/contentHeightMM*100)))
 }
 
-var unbreakable = []string{"callout", "code", "table", "diagram", "qa", "fill_in", "two_column"}
+var unbreakable = []string{"callout", "code", "table", "diagram", "qa", "fill_in", "two_column", "bullets", "numbered"}
 
 func analyze(marks []mark, blocks []model.Block) *Result {
 	r := &Result{Blocks: []Pos{}, Warnings: []string{}}
@@ -87,6 +87,9 @@ func warnings(r *Result) []string {
 			ws = append(ws, fmt.Sprintf("block %s (%s) runs past the bottom of page %d; it is taller than a page, so split it into smaller blocks", p.ID, p.Type, p.EndPage))
 		}
 	}
+	if n := r.PageCount; n > 1 && r.PageFill[n-1] < 15 && !startsAfterBreak(bs, n) {
+		ws = append(ws, fmt.Sprintf("the last page (%d) is only %.0f%% full: a little content spilled over; trim or tighten something earlier to save a page, or keep writing", n, r.PageFill[n-1]))
+	}
 	for pg := 1; pg < r.PageCount; pg++ {
 		fill := r.PageFill[pg-1]
 		lastOnPage := -1
@@ -118,4 +121,13 @@ func warnings(r *Result) []string {
 		}
 	}
 	return ws
+}
+
+func startsAfterBreak(bs []Pos, page int) bool {
+	for i, p := range bs {
+		if p.Page == page && p.Type != "page_break" {
+			return i > 0 && bs[i-1].Type == "page_break"
+		}
+	}
+	return false
 }

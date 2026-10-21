@@ -95,7 +95,7 @@
   } else if ty == "paragraph" {
     block(width: 100%, { mark(b.id); spans(b.text); endmark(b.id) })
   } else if ty == "bullets" or ty == "numbered" {
-    block(width: 100%, { mark(b.id); items(b.items, ty == "numbered"); endmark(b.id) })
+    nosplit(limit: 0.25, block(width: 100%, { mark(b.id); items(b.items, ty == "numbered"); endmark(b.id) }))
   } else if ty == "callout" {
     let cv = t.callout.at(b.variant)
     nosplit(above: 1.1em, below: 1.1em, block(

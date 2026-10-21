@@ -23,7 +23,7 @@ func TestWarnings(t *testing.T) {
 		t.Fatalf("fill: %+v", r.PageFill)
 	}
 	want := "block c (callout, 100mm tall) did not fit at the bottom of page 1"
-	if len(r.Warnings) != 1 || !strings.Contains(r.Warnings[0], want) {
+	if len(r.Warnings) != 2 || !strings.Contains(r.Warnings[1], want) || !strings.Contains(r.Warnings[0], "last page (3) is only 2% full") {
 		t.Fatalf("warnings: %v", r.Warnings)
 	}
 

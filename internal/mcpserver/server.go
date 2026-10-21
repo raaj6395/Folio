@@ -121,14 +121,17 @@ func New(st *store.Store, lb *layout.Builder, home string) *mcp.Server {
 }
 
 type BlockPage struct {
-	ID   string `json:"id"`
-	Page int    `json:"page"`
+	ID       string  `json:"id"`
+	Page     int     `json:"page"`
+	HeightMM float64 `json:"height_mm,omitempty"`
 }
 
 type LayoutSummary struct {
-	PageCount    int         `json:"page_count"`
-	Blocks       []BlockPage `json:"blocks"`
-	LastPageFill float64     `json:"last_page_fill_pct"`
+	PageCount      int         `json:"page_count"`
+	Blocks         []BlockPage `json:"blocks"`
+	PageFill       []float64   `json:"page_fill_pct"`
+	LastPageFill   float64     `json:"last_page_fill_pct"`
+	LastPageFreeMM float64     `json:"last_page_free_mm"`
 }
 
 type MutationResult struct {
@@ -161,10 +164,10 @@ func (s *Server) result(ctx context.Context, nb store.Notebook, bs []model.Block
 		res.Warnings = append(res.Warnings, "the change was saved but rendering failed: "+err.Error())
 		return res
 	}
-	res.Layout = LayoutSummary{PageCount: r.PageCount, LastPageFill: r.LastPageFill, Blocks: []BlockPage{}}
+	res.Layout = LayoutSummary{PageCount: r.PageCount, PageFill: r.PageFill, LastPageFill: r.LastPageFill, LastPageFreeMM: r.LastPageFreeMM(), Blocks: []BlockPage{}}
 	res.Warnings = append(res.Warnings, r.Warnings...)
 	for _, id := range changed {
-		res.Layout.Blocks = append(res.Layout.Blocks, BlockPage{id, r.Page(id)})
+		res.Layout.Blocks = append(res.Layout.Blocks, BlockPage{id, r.Page(id), r.Height(id)})
 	}
 	return res
 }

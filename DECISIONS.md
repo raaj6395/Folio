@@ -116,3 +116,9 @@
 - **Why:** Spec 9. Each process owning its build dir avoids cross-process file locking.
 - **Alternatives considered:** fsnotify on the DB file (new dependency; WAL writes make it noisy).
 - **Affects interface/behaviour?** no — **User approved?** n.a.
+
+## 2026-10-22 — Changes from the guide-tuning runs (M3.5)
+- **Decision:** After generating REST APIs (clean), a consistent-hashing cheat sheet (notebook) and Kafka basics (dotgrid) with headless Claude, and reading its friction reports: (1) a new warning when the last page is under 15% full, unless it starts after an explicit page_break; (2) mutation results now include `page_fill_pct` for every page, `last_page_free_mm`, and `height_mm` per changed block, for page budgeting; (3) bullets/numbered lists under 25% of a page no longer split; (4) D2 now measures text with the theme font (`d2fonts.AddFontFamily` with the embedded Inter/Kalam), so label gaps in lines fit the rendered text; (5) the layout cache key includes a hash of the embedded templates plus a render version, and the D2 cache key a render version, so upgrading Folio invalidates stale builds; (6) the guide gained a D2 section (syntax, flow + sequence examples, sizing tips), a "checking your work" section and advice against unneeded page breaks.
+- **Why:** Spec 3.5: tune the guide using real sessions.
+- **Alternatives considered:** a "fit to remaining space" diagram size (left out; free-space numbers let the AI pick a size).
+- **Affects interface/behaviour?** yes (extra fields in mutation results) — **User approved?** n.a. (additive)
