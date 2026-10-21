@@ -4,37 +4,25 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{.Title}} · Folio</title>
-<style>
-  body { font: 14px/1.4 system-ui, sans-serif; margin: 0; background: #e4e6eb; color: #1d2433; }
-  header { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 16px; padding: 10px 20px; background: #fff; box-shadow: 0 1px 4px #0002; }
-  header a.home { color: #6b7280; text-decoration: none; }
-  #title { font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .meta { color: #6b7280; font-size: 13px; white-space: nowrap; }
-  #status.off { color: #b91c1c; }
-  a.btn { background: #2563eb; color: #fff; padding: 6px 12px; border-radius: 6px; text-decoration: none; font-size: 13px; }
-  #pages { display: flex; flex-direction: column; align-items: center; gap: 24px; padding: 28px 12px 60px; }
-  .page { width: min(900px, 100%); aspect-ratio: 210 / 297; background: #fff; box-shadow: 0 2px 10px #0003; position: relative; outline: 3px solid transparent; transition: outline-color 0.6s; }
-  .page img { width: 100%; height: 100%; display: block; }
-  .page .num { position: absolute; right: -36px; top: 0; color: #6b7280; font-size: 12px; }
-  .page.flash { outline-color: #f59e0b; transition: none; }
-  select { font: inherit; font-size: 13px; padding: 4px 6px; border-radius: 6px; border: 1px solid #d1d5db; background: #fff; color: inherit; }
-  body.dark { background: #0b0e15; color: #d9dee8; }
-  body.dark header { background: #161b27; box-shadow: 0 1px 4px #0008; }
-  body.dark .page { background: #141925; box-shadow: 0 2px 12px #000a; }
-  body.dark select { background: #1e2535; border-color: #3a4257; }
-</style>
+<script>
+  const notebookMode = {{.Mode}};
+  let view = "";
+  try { view = localStorage.getItem("folio-view-mode") || ""; } catch (e) {}
+  document.documentElement.dataset.theme = view || notebookMode;
+</script>
+<link rel="stylesheet" href="/style.css">
 </head>
 <body>
 <header>
   <a class="home" href="/">← Notebooks</a>
-  <span id="title">{{.Title}}</span>
+  <span class="grow" id="title">{{.Title}}</span>
   <span class="meta">theme <b id="theme">{{.Theme}} · {{.Mode}}</b></span>
   <span class="meta">v<b id="version">{{.Version}}</b></span>
   <span class="meta" id="ago"></span>
   <span class="meta" id="status">connecting…</span>
   <label class="meta">View
-    <select id="view" title="Only changes how you see the notes here; the notebook itself is unchanged">
-      <option value="">Notebook</option>
+    <select id="view" title="Only changes how you see the notes here; the notebook itself is unchanged. Auto follows the notebook's own mode.">
+      <option value="">Auto</option>
       <option value="dark">Dark</option>
       <option value="light">Light</option>
     </select>
@@ -45,13 +33,12 @@
 <script>
 const id = {{.ID}};
 const pagesEl = document.getElementById("pages");
+const viewEl = document.getElementById("view");
+const status = document.getElementById("status");
 let sigs = [];
 let updatedAt = null;
 let first = true;
 let es = null;
-let view = "";
-try { view = localStorage.getItem("folio-view-mode") || ""; } catch (e) {}
-const viewEl = document.getElementById("view");
 viewEl.value = view;
 const q = () => (view ? "?mode=" + view : "");
 
@@ -60,6 +47,8 @@ function apply(s) {
   document.title = s.title + " · Folio";
   document.getElementById("theme").textContent = s.theme + " · " + s.mode;
   document.getElementById("version").textContent = s.version;
+  document.documentElement.dataset.theme = s.mode;
+  document.getElementById("pdf").href = "/n/" + id + "/pdf" + q();
   updatedAt = new Date(s.updated_at);
   tick();
   for (let n = 1; n <= s.page_count; n++) {
@@ -85,8 +74,6 @@ function apply(s) {
   }
   sigs = s.pages;
   first = false;
-  document.body.classList.toggle("dark", s.mode === "dark");
-  document.getElementById("pdf").href = "/n/" + id + "/pdf" + q();
 }
 
 function tick() {
@@ -97,7 +84,6 @@ function tick() {
 }
 setInterval(tick, 1000);
 
-const status = document.getElementById("status");
 function connect() {
   if (es) es.close();
   sigs = [];
@@ -108,9 +94,11 @@ function connect() {
   es.onmessage = (e) => apply(JSON.parse(e.data));
   es.addEventListener("gone", () => { status.textContent = "notebook deleted"; es.close(); });
 }
+
 viewEl.onchange = () => {
   view = viewEl.value;
   try { localStorage.setItem("folio-view-mode", view); } catch (e) {}
+  document.documentElement.dataset.theme = view || notebookMode;
   connect();
 };
 connect();

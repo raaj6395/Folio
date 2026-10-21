@@ -32,6 +32,9 @@ var indexHTML string
 //go:embed notebook.html
 var notebookHTML string
 
+//go:embed style.css
+var styleCSS string
+
 var (
 	indexTmpl    = template.Must(template.New("index").Parse(indexHTML))
 	notebookTmpl = template.Must(template.New("notebook").Parse(notebookHTML))
@@ -46,6 +49,10 @@ func New(st *store.Store, lb *layout.Builder) http.Handler {
 	s := &Server{st, lb}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.index)
+	mux.HandleFunc("GET /style.css", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/css; charset=utf-8")
+		fmt.Fprint(w, styleCSS)
+	})
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "folio viewer ok") })
 	mux.HandleFunc("GET /n/{id}", s.notebook)
 	mux.HandleFunc("GET /n/{id}/events", s.events)

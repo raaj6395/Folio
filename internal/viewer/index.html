@@ -4,20 +4,36 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Folio</title>
-<style>
-  body { font: 15px/1.5 system-ui, sans-serif; margin: 0; background: #eceef2; color: #1d2433; }
-  main { max-width: 720px; margin: 40px auto; padding: 0 16px; }
-  h1 { font-size: 22px; }
-  a.nb { display: flex; justify-content: space-between; gap: 12px; background: #fff; padding: 14px 18px; margin: 8px 0; border-radius: 8px; text-decoration: none; color: inherit; box-shadow: 0 1px 3px #0001; }
-  a.nb:hover { box-shadow: 0 2px 8px #0002; }
-  .meta { color: #6b7280; font-size: 13px; }
-</style>
+<script>
+  let view = "";
+  try { view = localStorage.getItem("folio-view-mode") || ""; } catch (e) {}
+  document.documentElement.dataset.theme = view === "light" ? "light" : "dark";
+</script>
+<link rel="stylesheet" href="/style.css">
 </head>
 <body>
+<header>
+  <span class="grow">Folio notebooks</span>
+  <label class="meta">View
+    <select id="view" title="How notes look in this browser; notebooks themselves are unchanged">
+      <option value="">Auto</option>
+      <option value="dark">Dark</option>
+      <option value="light">Light</option>
+    </select>
+  </label>
+</header>
 <main>
-<h1>Folio notebooks</h1>
-{{range .}}<a class="nb" href="/n/{{.ID}}"><span>{{.Title}}</span><span class="meta">{{.Theme}} · v{{.Version}} · {{.UpdatedAt.Local.Format "2006-01-02 15:04"}}</span></a>
-{{else}}<p class="meta">No notebooks yet. Ask Claude to make some notes with Folio.</p>{{end}}
+{{range .}}<a class="nb" href="/n/{{.ID}}"><span>{{.Title}}</span><span class="meta">{{.Theme}} · {{.Mode}} · v{{.Version}} · {{.UpdatedAt.Local.Format "2006-01-02 15:04"}}</span></a>
+{{else}}<p class="empty">No notebooks yet. Ask Claude to make some notes with Folio.</p>{{end}}
 </main>
+<script>
+  const viewEl = document.getElementById("view");
+  viewEl.value = view;
+  viewEl.onchange = () => {
+    view = viewEl.value;
+    try { localStorage.setItem("folio-view-mode", view); } catch (e) {}
+    document.documentElement.dataset.theme = view === "light" ? "light" : "dark";
+  };
+</script>
 </body>
 </html>

@@ -135,3 +135,9 @@
 - **Alternatives considered:** a toggle that calls set_theme (rejected for the reasons above).
 - **Known limit:** two tabs viewing the same notebook in different modes rebuild alternately (one layout cache per notebook dir); fine for a single user.
 - **Affects interface/behaviour?** yes (viewer UI) — **User approved?** yes (user asked for it, 2026-10-22)
+
+## 2026-10-22 — Viewer chrome follows dark/light
+- **Decision:** Both viewer pages share `/style.css` (embedded), built on CSS variables with `:root` (light) and `:root[data-theme="dark"]` tokens, plus `color-scheme` so native controls match. A tiny head script sets `data-theme` before first paint (no white flash) from the stored View choice. The home page uses the choice, defaulting to dark (the app default). A notebook page uses the choice, or the notebook's own mode under "Auto", and follows live mode changes from Claude. The home page has the same View selector; both pages share the localStorage key `folio-view-mode`. The "Notebook" option is renamed "Auto".
+- **Why:** User reported the home page stayed light.
+- **Alternatives considered:** `prefers-color-scheme` (follows the OS rather than the user's Folio choice; the user asked for dark by default).
+- **Affects interface/behaviour?** yes (viewer UI) — **User approved?** yes (user request)

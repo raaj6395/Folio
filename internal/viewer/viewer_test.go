@@ -46,6 +46,12 @@ func TestViewer(t *testing.T) {
 	if !strings.Contains(body, "/n/"+nb.ID) || !strings.Contains(body, "Viewer &lt;test&gt;") {
 		t.Fatal("index missing notebook or not escaped")
 	}
+	if css := get(t, srv.URL+"/style.css"); !strings.Contains(css, `[data-theme="dark"]`) {
+		t.Fatal("stylesheet missing dark tokens")
+	}
+	if page := get(t, srv.URL+"/n/"+nb.ID); !strings.Contains(page, `const notebookMode = "light"`) || !strings.Contains(page, `href="/style.css"`) {
+		t.Fatal("notebook page must start in the notebook's mode and use the shared stylesheet")
+	}
 	if png := get(t, srv.URL+"/n/"+nb.ID+"/page/1.png"); !strings.HasPrefix(png, "\x89PNG") {
 		t.Fatal("page is not a PNG")
 	}
