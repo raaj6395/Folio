@@ -1,7 +1,6 @@
 package viewer
 
 import (
-	"context"
 	"crypto/sha256"
 	_ "embed"
 	"encoding/hex"
@@ -12,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -65,20 +65,33 @@ type State struct {
 	Pages     []string  `json:"pages"`
 }
 
-func (s *Server) state(ctx context.Context, id string) (State, error) {
-	nb, err := s.st.Notebook(id)
+func viewMode(r *http.Request, nb *store.Notebook) {
+	if m := r.URL.Query().Get("mode"); slices.Contains(layout.Modes, m) {
+		nb.Mode = m
+	}
+}
+
+func (s *Server) load(r *http.Request) (store.Notebook, []model.Block, error) {
+	nb, err := s.st.Notebook(r.PathValue("id"))
+	if err != nil {
+		return nb, nil, err
+	}
+	viewMode(r, &nb)
+	bs, err := s.st.Blocks(nb.ID)
+	return nb, bs, err
+}
+
+func (s *Server) state(r *http.Request) (State, error) {
+	nb, bs, err := s.load(r)
 	if err != nil {
 		return State{}, err
 	}
-	bs, err := s.st.Blocks(id)
+	ctx := r.Context()
+	res, err := s.lb.Build(ctx, nb, bs)
 	if err != nil {
 		return State{}, err
 	}
-	r, err := s.lb.Build(ctx, nb, bs)
-	if err != nil {
-		return State{}, err
-	}
-	return State{ID: nb.ID, Title: nb.Title, Theme: nb.Theme, Mode: nb.Mode, Version: nb.Version, PageCount: r.PageCount, UpdatedAt: nb.UpdatedAt, Pages: signatures(nb, bs, r)}, nil
+	return State{ID: nb.ID, Title: nb.Title, Theme: nb.Theme, Mode: nb.Mode, Version: nb.Version, PageCount: res.PageCount, UpdatedAt: nb.UpdatedAt, Pages: signatures(nb, bs, res)}, nil
 }
 
 func signatures(nb store.Notebook, bs []model.Block, r *layout.Result) []string {
@@ -147,7 +160,7 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 			fl.Flush()
 			return
 		} else if nb.Version != last {
-			st, err := s.state(r.Context(), id)
+			st, err := s.state(r)
 			if err != nil {
 				slog.Error("viewer state", "err", err)
 			} else {
@@ -174,13 +187,7 @@ func (s *Server) page(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	id := r.PathValue("id")
-	nb, err := s.st.Notebook(id)
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	bs, err := s.st.Blocks(id)
+	nb, bs, err := s.load(r)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -209,13 +216,7 @@ func (s *Server) page(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) pdf(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	nb, err := s.st.Notebook(id)
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	bs, err := s.st.Blocks(id)
+	nb, bs, err := s.load(r)
 	if err != nil {
 		s.fail(w, err)
 		return

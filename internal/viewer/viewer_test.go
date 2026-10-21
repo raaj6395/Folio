@@ -52,6 +52,14 @@ func TestViewer(t *testing.T) {
 	if pdf := get(t, srv.URL+"/n/"+nb.ID+"/pdf"); !strings.HasPrefix(pdf, "%PDF") {
 		t.Fatal("not a PDF")
 	}
+	darkPNG := get(t, srv.URL+"/n/"+nb.ID+"/page/1.png?mode=dark")
+	lightPNG := get(t, srv.URL+"/n/"+nb.ID+"/page/1.png")
+	if darkPNG == lightPNG || !strings.HasPrefix(darkPNG, "\x89PNG") {
+		t.Fatal("?mode=dark must render a different page")
+	}
+	if n, _ := st.Notebook(nb.ID); n.Mode != "light" || n.Version != 2 {
+		t.Fatalf("view override must not change the notebook: %+v", n)
+	}
 	if resp, _ := http.Get(srv.URL + "/n/" + nb.ID + "/page/9.png"); resp.StatusCode != 404 {
 		t.Fatalf("missing page status %d", resp.StatusCode)
 	}

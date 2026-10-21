@@ -17,6 +17,11 @@
   .page img { width: 100%; height: 100%; display: block; }
   .page .num { position: absolute; right: -36px; top: 0; color: #6b7280; font-size: 12px; }
   .page.flash { outline-color: #f59e0b; transition: none; }
+  select { font: inherit; font-size: 13px; padding: 4px 6px; border-radius: 6px; border: 1px solid #d1d5db; background: #fff; color: inherit; }
+  body.dark { background: #0b0e15; color: #d9dee8; }
+  body.dark header { background: #161b27; box-shadow: 0 1px 4px #0008; }
+  body.dark .page { background: #141925; box-shadow: 0 2px 12px #000a; }
+  body.dark select { background: #1e2535; border-color: #3a4257; }
 </style>
 </head>
 <body>
@@ -27,7 +32,14 @@
   <span class="meta">v<b id="version">{{.Version}}</b></span>
   <span class="meta" id="ago"></span>
   <span class="meta" id="status">connecting…</span>
-  <a class="btn" href="/n/{{.ID}}/pdf">Download PDF</a>
+  <label class="meta">View
+    <select id="view" title="Only changes how you see the notes here; the notebook itself is unchanged">
+      <option value="">Notebook</option>
+      <option value="dark">Dark</option>
+      <option value="light">Light</option>
+    </select>
+  </label>
+  <a class="btn" id="pdf" href="/n/{{.ID}}/pdf">Download PDF</a>
 </header>
 <div id="pages"></div>
 <script>
@@ -36,6 +48,12 @@ const pagesEl = document.getElementById("pages");
 let sigs = [];
 let updatedAt = null;
 let first = true;
+let es = null;
+let view = "";
+try { view = localStorage.getItem("folio-view-mode") || ""; } catch (e) {}
+const viewEl = document.getElementById("view");
+viewEl.value = view;
+const q = () => (view ? "?mode=" + view : "");
 
 function apply(s) {
   document.getElementById("title").textContent = s.title;
@@ -55,7 +73,7 @@ function apply(s) {
     }
     const sig = s.pages[n - 1];
     if (sigs[n - 1] !== sig) {
-      div.querySelector("img").src = "/n/" + id + "/page/" + n + ".png?v=" + s.version + "-" + sig;
+      div.querySelector("img").src = "/n/" + id + "/page/" + n + ".png?v=" + s.version + "-" + sig + (view ? "&mode=" + view : "");
       if (!first) {
         div.classList.add("flash");
         setTimeout(() => div.classList.remove("flash"), 2000);
@@ -67,6 +85,8 @@ function apply(s) {
   }
   sigs = s.pages;
   first = false;
+  document.body.classList.toggle("dark", s.mode === "dark");
+  document.getElementById("pdf").href = "/n/" + id + "/pdf" + q();
 }
 
 function tick() {
@@ -78,11 +98,22 @@ function tick() {
 setInterval(tick, 1000);
 
 const status = document.getElementById("status");
-const es = new EventSource("/n/" + id + "/events");
-es.onopen = () => { status.textContent = "live"; status.className = "meta"; };
-es.onerror = () => { status.textContent = "reconnecting…"; status.className = "meta off"; };
-es.onmessage = (e) => apply(JSON.parse(e.data));
-es.addEventListener("gone", () => { status.textContent = "notebook deleted"; es.close(); });
+function connect() {
+  if (es) es.close();
+  sigs = [];
+  first = true;
+  es = new EventSource("/n/" + id + "/events" + q());
+  es.onopen = () => { status.textContent = "live"; status.className = "meta"; };
+  es.onerror = () => { status.textContent = "reconnecting…"; status.className = "meta off"; };
+  es.onmessage = (e) => apply(JSON.parse(e.data));
+  es.addEventListener("gone", () => { status.textContent = "notebook deleted"; es.close(); });
+}
+viewEl.onchange = () => {
+  view = viewEl.value;
+  try { localStorage.setItem("folio-view-mode", view); } catch (e) {}
+  connect();
+};
+connect();
 </script>
 </body>
 </html>

@@ -128,3 +128,10 @@
 - **Why:** User request: dark by default, light when asked.
 - **Alternatives considered:** separate `clean-dark`/`notebook-dark` themes (doubles the theme list and can't switch modes independently of the theme).
 - **Affects interface/behaviour?** yes (new `mode` field; default look is dark) — **User approved?** yes (user asked for it, 2026-10-22)
+
+## 2026-10-22 — Viewer dark/light toggle is view-only
+- **Decision:** The viewer toolbar has a "View" selector: Notebook (default, follows the notebook's stored mode, including when Claude switches it) / Dark / Light. The choice is stored in the browser's localStorage and sent as `?mode=` on the events, page and PDF URLs. The server renders with that mode but never writes it to the notebook. The viewer stays read-only (spec 4/9).
+- **Why:** User request. Writing the mode from the viewer would create a version per click, fill the undo history and cause expected_version conflicts with Claude's edits.
+- **Alternatives considered:** a toggle that calls set_theme (rejected for the reasons above).
+- **Known limit:** two tabs viewing the same notebook in different modes rebuild alternately (one layout cache per notebook dir); fine for a single user.
+- **Affects interface/behaviour?** yes (viewer UI) — **User approved?** yes (user asked for it, 2026-10-22)
