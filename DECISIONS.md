@@ -141,3 +141,18 @@
 - **Why:** User reported the home page stayed light.
 - **Alternatives considered:** `prefers-color-scheme` (follows the OS rather than the user's Folio choice; the user asked for dark by default).
 - **Affects interface/behaviour?** yes (viewer UI) — **User approved?** yes (user request)
+
+## 2026-10-22 — Cloud Phase 1: Postgres + MCP over HTTP
+- **Decision:**
+  - Postgres image `postgres:17.7-alpine` on `127.0.0.1:5433`, with a named volume. The init script also creates `folio_test`.
+  - Driver `github.com/jackc/pgx/v5 v5.11.0` through `database/sql` (`pgx/v5/stdlib`). It's the most widely used pure-Go Postgres driver, and the existing `database/sql` code keeps working.
+  - **One store with a dialect flag**, not two implementations. Queries are written with `?` and rewritten to `$n` for Postgres. Postgres uses `SELECT … FOR UPDATE` to lock the notebook during a write. `blocks.position` is `TEXT COLLATE "C"`.
+  - Data and timestamps stay `TEXT` on Postgres. Text keeps the canonical JSON bytes that diff detection compares (JSONB would reorder keys), and avoids dialect-specific scan types. Timestamps now use a fixed-width UTC format, so text order is chronological. The previous variable-length RFC3339Nano format sorted e.g. `.5Z` after `.53Z`.
+  - SQLite keeps `PRAGMA user_version` migrations, so existing local databases are untouched. Postgres uses a `schema_migrations` table, with each migration applied in a transaction. This deviates from the spec's "one migrations table for both"; it's less code and avoids migrating existing SQLite files.
+  - `folio http` serves `/mcp` (`mcp.NewStreamableHTTPHandler`, default **stateful** sessions, one shared `mcp.Server`), `/healthz` (DB ping) and the viewer routes on one port. It refuses non-loopback addresses unless `--unsafe-public` is passed, and shuts down gracefully on SIGINT/SIGTERM.
+  - `export_pdf` adds `url` and `get_viewer_url` uses `FOLIO_PUBLIC_URL` when serving over HTTP. Both changes are additive.
+  - `make test-pg` runs packages serially (`-p 1`): test packages share `folio_test` and truncate it, so in parallel they wiped each other's data.
+- **Why:** CLOUD_BUILD_SPEC.md Phase 1.
+- **Alternatives considered:** a separate Postgres implementation behind an interface (two copies of every query); JSONB/TIMESTAMPTZ columns; stateless HTTP sessions (fine too, but stateful is the SDK default and works with Claude Code); a schema per test package (more setup than `-p 1`).
+- **Notes:** the Alpine image's default collation already sorts by bytes (musl), so a byte-order test alone can't catch a missing `COLLATE "C"`. A Postgres-only test asserts the column's collation instead. ICU collation (`und-x-icu`) gives `_,a,a0b,Z,z1` versus byte order `Z,_,a,a0b,z1`, showing the risk on glibc/managed Postgres.
+- **Affects interface/behaviour?** yes (new `http` command, additive tool fields) — **User approved?** yes (CLOUD_BUILD_SPEC.md, requested by the user)

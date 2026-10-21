@@ -31,6 +31,29 @@ claude mcp list     # folio: ... ✔ Connected
 
 `-s user` makes Folio available in every project. Use `-s project` to share it through a project's `.mcp.json` instead. If you move the binary, run `claude mcp remove folio -s user` and add it again.
 
+## Run with Postgres + HTTP (local)
+
+Folio can store notebooks in Postgres and serve MCP over HTTP, the first step towards running it in the cloud. Locally, Postgres runs in Docker.
+
+```sh
+cp .env.example .env        # local settings (never committed)
+make db-up                  # Postgres 17 in Docker on localhost:5433
+make run-http               # builds, then serves http://127.0.0.1:8080 (MCP at /mcp, viewer at /)
+```
+
+In another terminal:
+
+```sh
+claude mcp add -s user --transport http folio-http http://127.0.0.1:8080/mcp
+claude mcp list             # folio-http: ... (HTTP) - ✔ Connected
+```
+
+- **No authentication yet.** `folio http` only listens on loopback addresses (127.0.0.1, ::1, localhost). It refuses anything else unless you pass `--unsafe-public`. Don't do that on a shared network.
+- `FOLIO_DB_URL` selects Postgres for every command (`mcp`, `serve`, `export`, `doctor`, `http`). Without it, Folio uses SQLite in `~/.folio` as before.
+- `export_pdf` and `get_viewer_url` return links on the HTTP server (`FOLIO_PUBLIC_URL`).
+- `make db-psql` opens a SQL shell. `make db-down` stops the container but keeps the data. `make db-reset` wipes it.
+- `make test-pg` runs the whole test suite against Postgres too.
+
 ## Watch pages update live
 
 ```sh
@@ -70,7 +93,8 @@ When I ask for notes, a cheat sheet or a revision sheet, use the `folio` MCP too
 | `folio mcp` | MCP server over stdio (Claude Code starts this). |
 | `folio serve [--port 7420]` | Read-only live web viewer. |
 | `folio export <notebook-id> [-o file.pdf]` | Export a PDF from the command line. Default path: `~/.folio/exports/<slug>-<date>.pdf`. |
-| `folio doctor` | Environment checks. |
+| `folio http [--unsafe-public]` | MCP over HTTP at `/mcp`, plus the viewer and `/healthz`, on `FOLIO_HTTP_ADDR` (default 127.0.0.1:8080). |
+| `folio doctor` | Environment checks, including which database backend is used. |
 
 ## MCP tools
 

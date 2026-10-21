@@ -1,8 +1,8 @@
 # Folio — Progress
 
 **Last updated:** 2026-10-22 00:30
-**Current milestone:** M3 complete (M4 optional, needs your approval)
-**Current task:** none — waiting for user checks (see Open questions)
+**Current milestone:** Cloud Phase 1 complete (CLOUD_BUILD_SPEC.md)
+**Current task:** none — next would be Cloud Phase 2 (Render deploy) or Phase 3 (auth)
 **Overall status:** Needs user input
 
 ## Status summary
@@ -58,6 +58,20 @@ Legend: [ ] todo · [~] in progress · [x] done · [!] blocked
 ### Milestone 4 — Free-form layer (optional, ask first)
 - [ ] M4 Not started — needs user approval
 
+## Cloud Phase 1 — Postgres + MCP over HTTP (CLOUD_BUILD_SPEC.md)
+- [x] C0.1 docker compose Postgres, .env.example, .env ignored — `25aeef4` — verified: `make db-up` healthy, `folio` + `folio_test` DBs listed, `git check-ignore .env`
+- [x] C0.2 Makefile db/test-pg/run-http targets — `65ace13` — verified: targets run
+- [x] C0.3 doctor reports backend + checks Postgres — `ac11a6c` — verified: PASS on sqlite and postgres, clear FAIL with a wrong password (redacted)
+- [x] C1.1 pgx v5.11.0 — `f70ea88`
+- [x] C1.2/C1.3 store dialect support + tests on both backends — `9938a9d` — verified: all store tests pass on sqlite and postgres; collation test pins `COLLATE "C"`
+- [x] C1.4 FOLIO_DB_URL selects backend for every command — `ac11a6c` — verified: stdio `create_notebook` row visible in Postgres
+- [x] C2.1–C2.4 `folio http`, loopback guard, tool URLs, HTTP integration test — `a50ea09` (+ `6fce5e3` serial pg tests) — verified: guard refuses 0.0.0.0; `/healthz` ok; SIGINT clean shutdown; TestMCPOverHTTP passes on both backends; `make test` and `make test-pg` green
+- [x] C3.1 Claude Code registered over HTTP (`folio-http`, user scope) — verified: `claude mcp list` shows both folio (stdio) and folio-http (HTTP) Connected
+- [x] C3.2 real session — verified: headless Claude (sonnet) wrote DNS notes `n_cjuzapi3` via folio-http, rendered, exported (URL served a PDF)
+- [x] C3.3 persistence — verified: rows in Postgres (10 blocks, 9 snapshots); same version/pages after restarting `folio http`, and again after `docker compose down` + `make db-up`
+- [x] C3.4 live viewer on Postgres — verified: SSE delivered versions 1→9 while Claude wrote
+- [x] C4 docs — README "Run with Postgres + HTTP (local)", DECISIONS entry, this section
+
 ## Blockers
 - (none)
 
@@ -91,6 +105,11 @@ Legend: [ ] todo · [~] in progress · [x] done · [!] blocked
 | 2026-10-22 | dotgrid | Good (checked by Claude) | none |
 
 ## Session log
+### 2026-10-22 — Session 1 (Cloud Phase 1)
+- Did: C0–C4 from CLOUD_BUILD_SPEC.md.
+- Verified: see the Cloud Phase 1 checklist. `make test` (sqlite) and `make test-pg` (sqlite + postgres) green.
+- Problems: the Alpine Postgres collation is byte order, so the order test couldn't fail there (added a collation assertion). Postgres test packages raced on the shared test DB (now `-p 1`). One C2 commit went in while `make test-pg` failed, because commands were chained with `;` (fixed in the next commit).
+- Next: Phase 2 (Dockerfile for Folio + Render deploy) or Phase 3 (auth). Note: with no auth, keep `folio http` on loopback.
 ### 2026-10-22 — Session 1 (dark mode, user request)
 - Did: added notebook `mode` (dark default, light on request) across store (migration 2), templates (dark palettes for all 3 themes, dark code highlighting), D2 (dark theme, canvas stripped), MCP tools, guide and viewer.
 - Verified: TestModes (default dark, explicit light, switch via set_theme, mode kept when omitted, undo restores, bad value rejected); kitchen sink builds in all themes × both modes, dark pages inspected; the real DB migrated with all 6 existing notebooks kept light (backup of the pre-migration DB in the session scratchpad).
