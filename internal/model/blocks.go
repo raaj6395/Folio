@@ -49,6 +49,7 @@ var registry = map[string]func() data{
 	"qa":         func() data { return &QA{} },
 	"fill_in":    func() data { return &FillIn{} },
 	"spacer":     func() data { return &Spacer{} },
+	"diagram":    func() data { return &Diagram{} },
 	"divider":    func() data { return &Empty{} },
 	"page_break": func() data { return &Empty{} },
 }
@@ -388,6 +389,48 @@ func (s *Spacer) validate() error {
 }
 func (s *Spacer) doc() map[string]any { return map[string]any{"size": s.Size} }
 func (s *Spacer) summary() string     { return "spacer " + s.Size }
+
+type Diagram struct {
+	Source  string `json:"source"`
+	Caption string `json:"caption,omitempty"`
+	Size    string `json:"size,omitempty"`
+}
+
+func (d *Diagram) validate() error {
+	if d.Size == "" {
+		d.Size = "full"
+	}
+	if !slices.Contains([]string{"full", "half", "small"}, d.Size) {
+		return fmt.Errorf(`size must be "full", "half" or "small", got %q`, d.Size)
+	}
+	return required("source", d.Source)
+}
+func (d *Diagram) doc() map[string]any {
+	return map[string]any{"source": d.Source, "size": d.Size, "caption": ParseInline(d.Caption)}
+}
+func (d *Diagram) summary() string {
+	nodes := map[string]bool{}
+	for _, line := range strings.Split(d.Source, "\n") {
+		for _, part := range strings.Split(line, "->") {
+			name, _, _ := strings.Cut(strings.TrimSpace(part), ":")
+			if name = strings.TrimSpace(strings.Trim(name, "<>-{}")); name != "" && !strings.ContainsAny(name, " .") {
+				nodes[name] = true
+			}
+		}
+	}
+	if d.Caption != "" {
+		return fmt.Sprintf("diagram: ~%d nodes, %s", len(nodes), plain(d.Caption))
+	}
+	return fmt.Sprintf("diagram: ~%d nodes", len(nodes))
+}
+
+func (b Block) DiagramSource() (src, size string, ok bool) {
+	if b.Type != "diagram" {
+		return "", "", false
+	}
+	d := b.decode().(*Diagram)
+	return d.Source, d.Size, true
+}
 
 type Empty struct{}
 

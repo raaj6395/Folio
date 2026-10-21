@@ -36,3 +36,24 @@ func TestM25Blocks(t *testing.T) {
 		exec.Command("cp", "-R", b.Dir(nb.ID), d).Run()
 	}
 }
+
+func TestDiagramRender(t *testing.T) {
+	b := builder(t)
+	bs := blocks(t,
+		`{"type":"heading","level":2,"text":"Request lifecycle"}`,
+		`{"type":"diagram","source":"client -> lb: HTTPS\nlb -> api: route\napi -> cache: lookup\napi -> db: query\ndb -> api: rows\napi -> client: JSON","caption":"Request lifecycle"}`,
+		`{"type":"diagram","source":"shape: sequence_diagram\nclient -> server: GET /users/42\nserver -> client: 200 OK","size":"half"}`,
+	)
+	nb := store.Notebook{ID: "n_d2", Title: "D2", Theme: "clean", Paper: "plain", Version: 1}
+	r, err := b.Build(context.Background(), nb, bs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Warnings) != 0 {
+		t.Fatal(r.Warnings)
+	}
+	if d := os.Getenv("FOLIO_KEEP"); d != "" {
+		b.RenderPNG(context.Background(), nb, bs, []int{1, r.PageCount}, 70)
+		exec.Command("cp", "-R", b.Dir(nb.ID), d).Run()
+	}
+}

@@ -30,10 +30,6 @@ Recommended workflow: get_authoring_guide once → create_notebook → plan an o
 //go:embed guide.md
 var guide string
 
-var themes = map[string]string{
-	"clean": "Clean typeset look: Inter, crisp boxes, plain paper.",
-}
-
 var papers = []string{"plain", "ruled", "dotted", "grid"}
 
 type Server struct {
@@ -52,6 +48,7 @@ const blockDescription = `One block. Set "type" plus that type's fields:
 - qa: question, answer, hide_answer? (bool; true prints the answer upside down at the page bottom for self-testing).
 - fill_in: prompt, lines (1-15). Blank ruled lines for the reader to write on.
 - spacer: size (small|medium|large). Vertical space.
+- diagram: source (D2 language, e.g. "client -> server: request"), size? (full|half|small, default full), caption?. Compile errors are returned with line numbers; use preview_diagram to check one first.
 - divider: no fields. Horizontal rule.
 - page_break: no fields. Starts a new page.
 Text fields accept only this inline markdown: **bold**, *italic*, ` + "`code`" + `, [text](url), ==highlight==.
@@ -172,15 +169,8 @@ func (s *Server) result(ctx context.Context, nb store.Notebook, bs []model.Block
 }
 
 func validTheme(theme string) error {
-	if _, ok := themes[theme]; !ok {
-		names := []string{}
-		for n := range themes {
-			names = append(names, n)
-		}
-		slices.Sort(names)
-		return fmt.Errorf("unknown theme %q; valid themes: %s (see list_themes)", theme, strings.Join(names, ", "))
-	}
-	return nil
+	_, err := layout.ThemeByName(theme)
+	return err
 }
 
 func validPaper(paper string) error {

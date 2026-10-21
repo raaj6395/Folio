@@ -150,7 +150,15 @@ func (b *Builder) build(ctx context.Context, nb store.Notebook, blocks []model.B
 	if err := extract(folio.Templates, "templates", dir); err != nil {
 		return nil, err
 	}
-	doc := map[string]any{"title": nb.Title, "theme": nb.Theme, "paper": nb.Paper, "blocks": docBlocks(blocks)}
+	th, err := ThemeByName(nb.Theme)
+	if err != nil {
+		return nil, err
+	}
+	docs, dwarns, err := b.docBlocks(ctx, dir, th, blocks)
+	if err != nil {
+		return nil, err
+	}
+	doc := map[string]any{"title": nb.Title, "theme": nb.Theme, "paper": nb.Paper, "blocks": docs}
 	js, _ := json.Marshal(doc)
 	if err := os.WriteFile(filepath.Join(dir, "doc.json"), js, 0o644); err != nil {
 		return nil, err
@@ -176,6 +184,7 @@ func (b *Builder) build(ctx context.Context, nb store.Notebook, blocks []model.B
 		return nil, fmt.Errorf("parsing typst layout output: %w", err)
 	}
 	r := analyze(marks, blocks)
+	r.Warnings = append(r.Warnings, dwarns...)
 	r.Key, r.PDF = key(nb), filepath.Join(dir, "out.pdf")
 	r.Elapsed = time.Since(start)
 	js, _ = json.Marshal(r)
@@ -184,13 +193,6 @@ func (b *Builder) build(ctx context.Context, nb store.Notebook, blocks []model.B
 	return r, nil
 }
 
-func docBlocks(blocks []model.Block) []map[string]any {
-	out := make([]map[string]any, len(blocks))
-	for i, b := range blocks {
-		out[i] = b.Doc()
-	}
-	return out
-}
 
 func (b *Builder) RenderPNG(ctx context.Context, nb store.Notebook, blocks []model.Block, pages []int, ppi int) ([][]byte, error) {
 	b.mu.Lock()

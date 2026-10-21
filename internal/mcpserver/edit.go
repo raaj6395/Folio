@@ -100,7 +100,7 @@ func missing(bs []model.Block, ids []string) error {
 func (s *Server) registerEdit(m *mcp.Server) {
 	addTool(m, "insert_blocks", "Insert blocks after a given block (or at the start). Validated as a whole; nothing is written if any block is invalid.",
 		func(ctx context.Context, _ *mcp.CallToolRequest, in insertIn) (*mcp.CallToolResult, MutationResult, error) {
-			add, err := parseBlocks(in.Blocks)
+			add, err := parseBlocks(ctx, in.Blocks)
 			if err != nil {
 				return nil, MutationResult{}, err
 			}
@@ -124,6 +124,9 @@ func (s *Server) registerEdit(m *mcp.Server) {
 					return nil, MutationResult{}, fmt.Errorf("block: %v", err)
 				}
 				return nil, MutationResult{}, fmt.Errorf("block (%s): %v", upd.Type, err)
+			}
+			if err := checkDiagram(ctx, upd); err != nil {
+				return nil, MutationResult{}, fmt.Errorf("block (diagram): %v", err)
 			}
 			res, err := s.mutate(ctx, in.NotebookID, in.ExpectedVersion, "update_block", "updated "+in.BlockID,
 				func(_ *store.Notebook, bs []model.Block) ([]model.Block, []string, error) {

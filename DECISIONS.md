@@ -86,3 +86,15 @@
 - **Why:** Spec 5.3 offers two options. Upside down keeps the answer in the notes for self-checking; an empty answer area would lose it.
 - **Alternatives considered:** an empty answer area.
 - **Affects interface/behaviour?** yes (picks the spec's option 1) — **User approved?** n.a. (spec said pick one and record it)
+
+## 2026-10-22 — Diagram rendering details
+- **Decision:** D2 SVGs are post-processed: `@font-face` blocks are removed, D2's bold/italic font classes are pointed at the theme font (`font-weight`/`font-style` added), and a default `text{font-family}` rule is added. Size mapping: width = min(fraction × 174mm text width, 0.9 × the SVG's natural width at 96 dpi), so small diagrams aren't blown up past body-text size. Then the height is capped at 60% of the content height (154mm). D2 labels are 16px, i.e. 12pt at natural size. If scaling puts them below 6pt, the build warns. D2 runs in-process behind a mutex (the layout engine is not documented as concurrency-safe). The dagre layout is used. SVGs are cached in `build/<id>/diagrams/<sha256(theme,sketch,font,source)[:16]>.svg`. Write-time validation compiles with the default style.
+- **Why:** Typst's SVG renderer ignores `@font-face`, so diagram text fell back to a serif font. Retargeting makes diagrams match the notes.
+- **Alternatives considered:** installing D2's fonts (Source Sans Pro) into the font dir (diagrams wouldn't match the theme); ELK layout (dagre is D2's default and looked fine).
+- **Affects interface/behaviour?** no — **User approved?** n.a.
+
+## 2026-10-22 — Diagram `size` optional
+- **Decision:** `diagram.size` defaults to `full` when omitted.
+- **Why:** Fewer pointless validation round-trips for the AI.
+- **Alternatives considered:** required field.
+- **Affects interface/behaviour?** yes, minor — **User approved?** n.a. (lenient superset of the spec)

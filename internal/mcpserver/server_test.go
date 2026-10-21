@@ -223,3 +223,30 @@ func TestM2Editing(t *testing.T) {
 		t.Fatal(msg)
 	}
 }
+
+func TestDiagrams(t *testing.T) {
+	c := newClient(t)
+	var nb NotebookInfo
+	c.call("create_notebook", map[string]any{"title": "D"}, &nb)
+	msg := c.callErr("append_blocks", map[string]any{"notebook_id": nb.ID, "blocks": blocksArg(`[{"type":"paragraph","text":"x"},{"type":"diagram","source":"a -> b\nc ->"}]`)})
+	if !strings.Contains(msg, "block[1] (diagram): D2 error: 2:") {
+		t.Fatal(msg)
+	}
+	var res MutationResult
+	c.call("append_blocks", map[string]any{"notebook_id": nb.ID, "blocks": blocksArg(`[{"type":"diagram","source":"client -> api: request\napi -> db","size":"half","caption":"Flow"}]`)}, &res)
+	if res.Layout.PageCount != 1 || len(res.Warnings) != 0 {
+		t.Fatalf("%+v", res)
+	}
+	var out Outline
+	c.call("get_outline", map[string]any{"notebook_id": nb.ID}, &out)
+	if out.Blocks[0].Summary != "diagram: ~3 nodes, Flow" {
+		t.Fatal(out.Blocks[0].Summary)
+	}
+	r := c.raw("preview_diagram", map[string]any{"source": "a -> b"})
+	if r.IsError || len(r.Content) != 2 || !strings.Contains(r.Content[0].(*mcp.TextContent).Text, "labels ~") {
+		t.Fatalf("%+v", r.Content)
+	}
+	if msg := c.callErr("preview_diagram", map[string]any{"source": "a -> "}); !strings.Contains(msg, "D2 error") {
+		t.Fatal(msg)
+	}
+}

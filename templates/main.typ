@@ -152,6 +152,13 @@
   } else if ty == "spacer" {
     let h = (small: 4mm, medium: 10mm, large: 20mm).at(b.size)
     block(width: 100%, { mark(b.id); block(width: 100%, height: h); endmark(b.id) })
+  } else if ty == "diagram" {
+    nosplit(above: 1em, below: 1em, block(width: 100%, {
+      mark(b.id)
+      layout(size => align(center, image(b.svg, width: calc.min(b.width_mm * 1mm, size.width))))
+      caption(b.caption)
+      endmark(b.id)
+    }))
   } else if ty == "divider" {
     block(width: 100%, above: 1em, below: 1em, { mark(b.id); line(length: 100%, stroke: 0.6pt + t.rule); endmark(b.id) })
   } else if ty == "page_break" {

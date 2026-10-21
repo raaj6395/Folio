@@ -12,6 +12,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/raaj6395/folio/internal/diagram"
 	"github.com/raaj6395/folio/internal/layout"
 	"github.com/raaj6395/folio/internal/model"
 	"github.com/raaj6395/folio/internal/store"
@@ -93,6 +94,12 @@ type LayoutInfo struct {
 	Warnings  []string     `json:"warnings"`
 }
 
+type previewIn struct {
+	Source string `json:"source" jsonschema:"D2 diagram source"`
+	Theme  string `json:"theme,omitempty" jsonschema:"Theme whose diagram style to use; default clean"`
+	Size   string `json:"size,omitempty" jsonschema:"full, half or small (default full); affects the reported on-page size"`
+}
+
 type ExportOut struct {
 	Path string `json:"path"`
 }
@@ -142,7 +149,7 @@ func (s *Server) register(m *mcp.Server) {
 
 	addTool(m, "append_blocks", "Add blocks at the end of a notebook. All blocks are validated first; if any is invalid nothing is written. Returns the new block IDs in order, where they landed, and layout warnings.",
 		func(ctx context.Context, _ *mcp.CallToolRequest, in appendIn) (*mcp.CallToolResult, MutationResult, error) {
-			add, err := parseBlocks(in.Blocks)
+			add, err := parseBlocks(ctx, in.Blocks)
 			if err != nil {
 				return nil, MutationResult{}, err
 			}
@@ -210,6 +217,32 @@ func (s *Server) register(m *mcp.Server) {
 			return res, nil, nil
 		})
 
+	addTool(m, "preview_diagram", "Render D2 source to an image without changing any notebook. Use it to check a diagram before inserting it. Returns the D2 error (with line number) if it does not compile.",
+		func(ctx context.Context, _ *mcp.CallToolRequest, in previewIn) (*mcp.CallToolResult, any, error) {
+			if in.Theme == "" {
+				in.Theme = "clean"
+			}
+			th, err := layout.ThemeByName(in.Theme)
+			if err != nil {
+				return nil, nil, err
+			}
+			if in.Size == "" {
+				in.Size = "full"
+			}
+			if in.Size != "full" && in.Size != "half" && in.Size != "small" {
+				return nil, nil, fmt.Errorf(`size must be "full", "half" or "small", got %q`, in.Size)
+			}
+			png, w, h, pt, err := s.lb.PreviewPNG(ctx, in.Source, th, in.Size)
+			if err != nil {
+				return nil, nil, err
+			}
+			note := fmt.Sprintf("At size %q this diagram renders %.0f×%.0f mm on the page, labels ~%.1fpt.", in.Size, w, h, pt)
+			if pt < 6 {
+				note += " That is too small to read: simplify it, split it, or change its direction."
+			}
+			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: note}, &mcp.ImageContent{Data: png, MIMEType: "image/png"}}}, nil, nil
+		})
+
 	addTool(m, "export_pdf", "Export a notebook as a PDF file. Returns the absolute path.",
 		func(ctx context.Context, _ *mcp.CallToolRequest, in exportIn) (*mcp.CallToolResult, ExportOut, error) {
 			nb, bs, err := s.load(in.NotebookID)
@@ -236,14 +269,32 @@ func defaultPaper(theme string) string {
 	return "plain"
 }
 
-func parseBlocks(raws []json.RawMessage) ([]model.Block, error) {
+func checkDiagram(ctx context.Context, b model.Block) error {
+	if src, _, ok := b.DiagramSource(); ok {
+		if _, err := diagram.Render(ctx, src, diagram.Style{}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func parseBlocks(ctx context.Context, raws []json.RawMessage) ([]model.Block, error) {
 	if len(raws) == 0 {
 		return nil, fmt.Errorf("blocks must contain at least one block")
 	}
 	if len(raws) > 50 {
 		return nil, fmt.Errorf("blocks has %d entries, max 50 per call; split into several calls", len(raws))
 	}
-	return model.ParseAll(raws)
+	bs, err := model.ParseAll(raws)
+	if err != nil {
+		return nil, err
+	}
+	for i, b := range bs {
+		if err := checkDiagram(ctx, b); err != nil {
+			return nil, fmt.Errorf("block[%d] (diagram): %v", i, err)
+		}
+	}
+	return bs, nil
 }
 
 func (s *Server) load(id string) (store.Notebook, []model.Block, error) {
