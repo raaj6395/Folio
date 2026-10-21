@@ -1,0 +1,317 @@
+package model
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"reflect"
+	"slices"
+	"strings"
+	"time"
+	"unicode/utf8"
+)
+
+type Block struct {
+	ID        string          `json:"id"`
+	Type      string          `json:"type"`
+	Data      json.RawMessage `json:"-"`
+	Position  string          `json:"-"`
+	CreatedAt time.Time       `json:"-"`
+	UpdatedAt time.Time       `json:"-"`
+}
+
+func (b Block) MarshalJSON() ([]byte, error) {
+	head, _ := json.Marshal(struct {
+		ID   string `json:"id"`
+		Type string `json:"type"`
+	}{b.ID, b.Type})
+	if len(b.Data) <= 2 {
+		return head, nil
+	}
+	return append(append(head[:len(head)-1], ','), b.Data[1:]...), nil
+}
+
+type data interface {
+	validate() error
+	doc() map[string]any
+	summary() string
+}
+
+var registry = map[string]func() data{
+	"heading":    func() data { return &Heading{} },
+	"paragraph":  func() data { return &Paragraph{} },
+	"bullets":    func() data { return &List{} },
+	"numbered":   func() data { return &List{} },
+	"callout":    func() data { return &Callout{} },
+	"code":       func() data { return &Code{} },
+	"divider":    func() data { return &Empty{} },
+	"page_break": func() data { return &Empty{} },
+}
+
+func Types() []string {
+	var ts []string
+	for t := range registry {
+		ts = append(ts, t)
+	}
+	slices.Sort(ts)
+	return ts
+}
+
+func fieldNames(v any) []string {
+	var names []string
+	t := reflect.TypeOf(v).Elem()
+	for i := range t.NumField() {
+		names = append(names, strings.Split(t.Field(i).Tag.Get("json"), ",")[0])
+	}
+	return names
+}
+
+func Parse(raw json.RawMessage) (Block, error) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return Block{}, fmt.Errorf("block must be a JSON object: %v", err)
+	}
+	var typ string
+	json.Unmarshal(fields["type"], &typ)
+	mk, ok := registry[typ]
+	if !ok {
+		return Block{}, fmt.Errorf("unknown or missing type %q; valid types: %s", typ, strings.Join(Types(), ", "))
+	}
+	delete(fields, "type")
+	delete(fields, "id")
+	d := mk()
+	stripped, _ := json.Marshal(fields)
+	dec := json.NewDecoder(bytes.NewReader(stripped))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(d); err != nil {
+		return Block{Type: typ}, decodeErr(err, d)
+	}
+	if err := d.validate(); err != nil {
+		return Block{Type: typ}, err
+	}
+	canon, _ := json.Marshal(d)
+	return Block{Type: typ, Data: canon}, nil
+}
+
+func decodeErr(err error, d data) error {
+	var te *json.UnmarshalTypeError
+	if errors.As(err, &te) {
+		return fmt.Errorf("field %q must be %s, got %s", te.Field, jsonKind(te.Type), te.Value)
+	}
+	if msg, ok := strings.CutPrefix(err.Error(), "json: unknown field "); ok {
+		allowed := fieldNames(d)
+		if len(allowed) == 0 {
+			return fmt.Errorf("unknown field %s; this type takes no fields besides type", msg)
+		}
+		return fmt.Errorf("unknown field %s; allowed fields: %s", msg, strings.Join(allowed, ", "))
+	}
+	return err
+}
+
+func jsonKind(t reflect.Type) string {
+	switch t.Kind() {
+	case reflect.String:
+		return "a string"
+	case reflect.Int, reflect.Int64:
+		return "an integer"
+	case reflect.Bool:
+		return "a boolean"
+	case reflect.Slice:
+		return "a list of " + strings.TrimPrefix(jsonKind(t.Elem()), "a ")
+	case reflect.Struct:
+		return "an object"
+	}
+	return t.String()
+}
+
+func (b Block) decode() data {
+	d := registry[b.Type]()
+	json.Unmarshal(b.Data, d)
+	return d
+}
+
+func (b Block) Doc() map[string]any {
+	m := b.decode().doc()
+	m["id"] = b.ID
+	m["type"] = b.Type
+	return m
+}
+
+func (b Block) Summary() string {
+	s := strings.Join(strings.Fields(b.decode().summary()), " ")
+	if utf8.RuneCountInString(s) > 80 {
+		s = string([]rune(s)[:77]) + "..."
+	}
+	return s
+}
+
+func plain(s string) string {
+	var b strings.Builder
+	for _, sp := range ParseInline(s) {
+		b.WriteString(sp.Text)
+	}
+	return b.String()
+}
+
+func required(name, v string) error {
+	if strings.TrimSpace(v) == "" {
+		return fmt.Errorf("field %q is required and must not be empty", name)
+	}
+	return nil
+}
+
+type Heading struct {
+	Level int    `json:"level"`
+	Text  string `json:"text"`
+}
+
+func (h *Heading) validate() error {
+	if h.Level < 1 || h.Level > 3 {
+		return fmt.Errorf("level must be 1, 2 or 3, got %d", h.Level)
+	}
+	return required("text", h.Text)
+}
+func (h *Heading) doc() map[string]any {
+	return map[string]any{"level": h.Level, "text": ParseInline(h.Text)}
+}
+func (h *Heading) summary() string { return fmt.Sprintf("H%d %s", h.Level, plain(h.Text)) }
+
+type Paragraph struct {
+	Text string `json:"text"`
+}
+
+func (p *Paragraph) validate() error {
+	if n := utf8.RuneCountInString(p.Text); n > 2000 {
+		return fmt.Errorf("text is %d chars, max 2000; split it into several paragraphs", n)
+	}
+	return required("text", p.Text)
+}
+func (p *Paragraph) doc() map[string]any { return map[string]any{"text": ParseInline(p.Text)} }
+func (p *Paragraph) summary() string     { return plain(p.Text) }
+
+type Item struct {
+	Text     string `json:"text"`
+	Children []Item `json:"children,omitempty"`
+}
+
+type List struct {
+	Items []Item `json:"items"`
+}
+
+func (l *List) validate() error {
+	if len(l.Items) == 0 {
+		return errors.New(`field "items" must contain at least one item`)
+	}
+	count := 0
+	var walk func(items []Item, depth int, path string) error
+	walk = func(items []Item, depth int, path string) error {
+		for i, it := range items {
+			p := fmt.Sprintf("%s%d", path, i)
+			if depth > 3 {
+				return fmt.Errorf("item %s is nested %d levels deep, max 3", p, depth)
+			}
+			count++
+			if strings.TrimSpace(it.Text) == "" {
+				return fmt.Errorf("item %s has empty text", p)
+			}
+			if err := walk(it.Children, depth+1, p+"."); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if err := walk(l.Items, 1, ""); err != nil {
+		return err
+	}
+	if count > 40 {
+		return fmt.Errorf("list has %d items in total, max 40; split it into several lists", count)
+	}
+	return nil
+}
+func docItems(items []Item) []map[string]any {
+	out := []map[string]any{}
+	for _, it := range items {
+		out = append(out, map[string]any{"text": ParseInline(it.Text), "children": docItems(it.Children)})
+	}
+	return out
+}
+func (l *List) doc() map[string]any { return map[string]any{"items": docItems(l.Items)} }
+func (l *List) summary() string {
+	return fmt.Sprintf("%d items: %s", len(l.Items), plain(l.Items[0].Text))
+}
+
+var calloutVariants = []string{"note", "tip", "warning", "definition", "key_point"}
+
+type Callout struct {
+	Variant string   `json:"variant"`
+	Title   string   `json:"title,omitempty"`
+	Body    []string `json:"body"`
+}
+
+func (c *Callout) validate() error {
+	if !slices.Contains(calloutVariants, c.Variant) {
+		return fmt.Errorf("variant must be one of %s, got %q", strings.Join(calloutVariants, ", "), c.Variant)
+	}
+	if len(c.Body) == 0 {
+		return errors.New(`field "body" must be a list with at least one paragraph string`)
+	}
+	return nil
+}
+func (c *Callout) doc() map[string]any {
+	body := [][]Span{}
+	for _, p := range c.Body {
+		body = append(body, ParseInline(p))
+	}
+	return map[string]any{"variant": c.Variant, "title": ParseInline(c.Title), "body": body}
+}
+func (c *Callout) summary() string {
+	if c.Title != "" {
+		return c.Variant + ": " + plain(c.Title)
+	}
+	return c.Variant + ": " + plain(c.Body[0])
+}
+
+type Code struct {
+	Language string `json:"language"`
+	Code     string `json:"code"`
+	Caption  string `json:"caption,omitempty"`
+}
+
+func (c *Code) validate() error {
+	if err := required("code", c.Code); err != nil {
+		return err
+	}
+	if n := strings.Count(strings.TrimRight(c.Code, "\n"), "\n") + 1; n > 80 {
+		return fmt.Errorf("code has %d lines, max 80; split it into several code blocks", n)
+	}
+	return nil
+}
+func (c *Code) doc() map[string]any {
+	return map[string]any{"language": c.Language, "code": strings.TrimRight(c.Code, "\n"), "caption": ParseInline(c.Caption)}
+}
+func (c *Code) summary() string {
+	first, _, _ := strings.Cut(strings.TrimSpace(c.Code), "\n")
+	return fmt.Sprintf("code(%s): %s", c.Language, first)
+}
+
+type Empty struct{}
+
+func (*Empty) validate() error     { return nil }
+func (*Empty) doc() map[string]any { return map[string]any{} }
+func (*Empty) summary() string     { return "" }
+
+func ParseAll(raws []json.RawMessage) ([]Block, error) {
+	blocks := make([]Block, len(raws))
+	for i, raw := range raws {
+		b, err := Parse(raw)
+		if err != nil {
+			if b.Type == "" {
+				return nil, fmt.Errorf("block[%d]: %v", i, err)
+			}
+			return nil, fmt.Errorf("block[%d] (%s): %v", i, b.Type, err)
+		}
+		blocks[i] = b
+	}
+	return blocks, nil
+}

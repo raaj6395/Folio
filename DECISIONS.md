@@ -32,3 +32,27 @@
 - **Why:** Spec Section 10 asks for user scope.
 - **Alternatives considered:** project scope.
 - **Affects interface/behaviour?** no — **User approved?** n.a.
+
+## 2026-10-21 — Block ordering keys
+- **Decision:** Fractional string keys over base-36 digits (`0-9a-z`), via `model.KeyBetween(a, b)`. Keys never end in `0`, so there is always room before any key. Appends step one digit (`1`, `2`, … `z`, `z1`, …), which keeps keys short (≤10 chars after 300 appends). Mutations diff the old and new block lists, so only blocks whose position, type or data changed are written.
+- **Why:** Spec 5.1. Inserts and moves never renumber siblings.
+- **Alternatives considered:** float positions (run out of precision after repeated bisection); integer index (renumbers everything).
+- **Affects interface/behaviour?** no — **User approved?** n.a.
+
+## 2026-10-21 — Soft delete is a column, not a trash table
+- **Decision:** `delete_notebook` sets `notebooks.deleted_at`. All reads filter `deleted_at IS NULL`. Rows stay, so a notebook can be recovered by clearing the column.
+- **Why:** Same effect as a trash table, without copying rows across tables.
+- **Alternatives considered:** a separate `trash` table (spec wording).
+- **Affects interface/behaviour?** no — **User approved?** n.a.
+
+## 2026-10-21 — Undo semantics
+- **Decision:** Every snapshot stores a `base`, the version whose state it represents. A normal mutation (including `restore_version`) has `base = its own version`. `undo` restores snapshot `base - 1` and inherits that snapshot's base, so repeated undos walk further back instead of toggling. Undo after `restore_version` reverts the restore. Snapshots also store theme/paper, so undoing `set_theme` works.
+- **Why:** Spec 5.1/8.2 asks for undo without defining repeated undo.
+- **Alternatives considered:** undo = "restore version N-1", which makes two undos cancel each other out.
+- **Affects interface/behaviour?** yes (defines undo behaviour) — **User approved?** no — conventional editor semantics; flagged in PROGRESS open questions.
+
+## 2026-10-21 — SQLite connection settings
+- **Decision:** DSN pragmas `journal_mode(WAL)`, `busy_timeout(5000)`, `foreign_keys(1)` and `_txlock=immediate`. Schema migrations are tracked with `PRAGMA user_version`.
+- **Why:** Lets `folio mcp` and `folio serve` share the DB. Immediate transactions avoid read-to-write lock upgrade deadlocks.
+- **Alternatives considered:** a migration library (unneeded dependency).
+- **Affects interface/behaviour?** no — **User approved?** n.a.
