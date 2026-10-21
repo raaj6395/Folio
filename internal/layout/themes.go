@@ -21,6 +21,8 @@ type Theme struct {
 
 var Themes = []Theme{
 	{"clean", "Clean typeset look: Inter, crisp boxes, plain paper.", "plain", diagram.Style{ThemeID: 0, Font: "Inter"}},
+	{"notebook", "Handwritten notebook: Kalam handwriting font, ruled paper with a red margin line, hand-drawn (sketch) diagrams.", "ruled", diagram.Style{ThemeID: 0, Sketch: true, Font: "Kalam"}},
+	{"dotgrid", "Bullet-journal look: clean Inter fonts on dot-grid paper.", "dotted", diagram.Style{ThemeID: 0, Font: "Inter"}},
 }
 
 func ThemeByName(name string) (Theme, error) {

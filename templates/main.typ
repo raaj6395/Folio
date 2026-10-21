@@ -2,10 +2,33 @@
 #import ("themes/" + doc.theme + ".typ"): theme
 #let t = theme
 
+#let paper-background = {
+  let ink = t.paper-ink
+  let step = t.paper-step
+  let body = if doc.paper == "ruled" {
+    place(top + left, dy: 20mm, rect(width: 100%, height: 100% - 34mm, stroke: none,
+      fill: tiling(size: (step, step), place(bottom, line(length: step, stroke: 0.6pt + ink)))))
+  } else if doc.paper == "dotted" {
+    rect(width: 100%, height: 100%, stroke: none,
+      fill: tiling(size: (step, step), place(dx: step / 2, dy: step / 2, circle(radius: 0.45pt, fill: ink, stroke: none))))
+  } else if doc.paper == "grid" {
+    rect(width: 100%, height: 100%, stroke: none,
+      fill: tiling(size: (step, step), {
+        place(top, line(length: step, stroke: 0.3pt + ink))
+        place(left, line(angle: 90deg, length: step, stroke: 0.3pt + ink))
+      }))
+  }
+  body
+  if t.margin-line != none {
+    place(top + left, dx: 14mm, line(angle: 90deg, length: 100%, stroke: 0.8pt + t.margin-line))
+  }
+}
+
 #set document(title: doc.title)
 #set page(
   paper: "a4",
   margin: (x: 18mm, y: 20mm),
+  background: paper-background,
   header: context {
     set text(size: 8pt, fill: t.muted)
     doc.title
@@ -51,9 +74,9 @@
 
 #let content-height = 257mm
 
-#let nosplit(body, above: auto, below: auto) = layout(size => {
+#let nosplit(body, above: auto, below: auto, never: false) = layout(size => {
   let h = measure(block(width: size.width, body)).height
-  block(width: 100%, breakable: h > 0.4 * content-height, above: above, below: below, body)
+  block(width: 100%, breakable: not never and h > 0.4 * content-height, above: above, below: below, body)
 })
 
 #let caption(xs) = if xs.len() > 0 {
@@ -78,7 +101,7 @@
     nosplit(above: 1.1em, below: 1.1em, block(
       width: 100%,
       fill: cv.fill,
-      stroke: (left: 3pt + cv.accent),
+      stroke: if t.callout-style == "box" { 1.1pt + cv.accent } else { (left: 3pt + cv.accent) },
       radius: t.callout-radius,
       inset: (x: 10pt, y: 8pt),
       {
@@ -153,7 +176,7 @@
     let h = (small: 4mm, medium: 10mm, large: 20mm).at(b.size)
     block(width: 100%, { mark(b.id); block(width: 100%, height: h); endmark(b.id) })
   } else if ty == "diagram" {
-    nosplit(above: 1em, below: 1em, block(width: 100%, {
+    nosplit(above: 1em, below: 1em, never: true, block(width: 100%, {
       mark(b.id)
       layout(size => align(center, image(b.svg, width: calc.min(b.width_mm * 1mm, size.width))))
       caption(b.caption)

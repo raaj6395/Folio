@@ -98,3 +98,9 @@
 - **Why:** Fewer pointless validation round-trips for the AI.
 - **Alternatives considered:** required field.
 - **Affects interface/behaviour?** yes, minor — **User approved?** n.a. (lenient superset of the spec)
+
+## 2026-10-22 — Themes, paper and handwriting font
+- **Decision:** The handwriting font is Kalam (OFL). It ships real Light/Regular/Bold files, and Typst does not fake bold. Caveat and Patrick Hand ship as a variable font or regular-only. Paper backgrounds use Typst `tiling` fills on the page background. Ruled paper uses 8mm lines with a red margin line at 14mm in the notebook theme; the dot grid and squared grid use 5mm/7mm steps. Callouts in notebook/dotgrid use a full rounded border; clean keeps the left accent bar. No irregular hand-drawn callout borders: Typst has no cheap way to draw them, and D2 sketch mode already gives diagrams the hand-drawn feel. Ruled lines don't align with text baselines, because block spacing varies. Theme metadata (name, description, default paper, D2 style) lives in `layout.Themes`. Typst look-and-feel lives in `templates/themes/<name>.typ`. `set_theme` without `paper` switches to the new theme's default paper. Diagrams never split (height is capped at 60% of a page, so they always fit), which keeps captions with their images.
+- **Why:** Spec 6.3. The kitchen-sink check found a tall diagram's caption stranded on the next page.
+- **Alternatives considered:** keeping the current paper on theme switch (a notebook theme on plain paper loses the point).
+- **Affects interface/behaviour?** yes, minor (set_theme default paper) — **User approved?** n.a.

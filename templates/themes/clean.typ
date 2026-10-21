@@ -23,6 +23,8 @@
   callout-radius: 3pt,
   qa-accent: rgb("#0f766e"),
   fill-line: rgb("#9ca3af"),
-  paper-ink: rgb("#e5e7eb"),
+  callout-style: "bar",
+  paper-ink: rgb("#d5d9e0"),
+  paper-step: 7mm,
   margin-line: none,
 )

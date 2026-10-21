@@ -1,0 +1,446 @@
+[
+ {
+  "type": "heading",
+  "level": 1,
+  "text": "Kitchen sink: every block type"
+ },
+ {
+  "type": "paragraph",
+  "text": "Inline styles: **bold**, *italic*, `inline code`, ==highlight==, [a link](https://typst.app), and **bold with *italic* inside**. Unclosed **markers stay literal. Typst syntax is literal too: #eval(\"1\") $x$ <label> @ref [brackets] \\ backslash."
+ },
+ {
+  "type": "heading",
+  "level": 2,
+  "text": "Lists"
+ },
+ {
+  "type": "bullets",
+  "items": [
+   {
+    "text": "Level one",
+    "children": [
+     {
+      "text": "Level two",
+      "children": [
+       {
+        "text": "Level three"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "text": "A second top-level item with a longer line of text that will need to wrap onto another line of the page."
+   }
+  ]
+ },
+ {
+  "type": "numbered",
+  "items": [
+   {
+    "text": "First step"
+   },
+   {
+    "text": "Second step",
+    "children": [
+     {
+      "text": "Sub-step a"
+     },
+     {
+      "text": "Sub-step b"
+     }
+    ]
+   },
+   {
+    "text": "Third step"
+   }
+  ]
+ },
+ {
+  "type": "heading",
+  "level": 2,
+  "text": "Callouts"
+ },
+ {
+  "type": "callout",
+  "variant": "note",
+  "body": [
+   "A note without a title uses the variant label."
+  ]
+ },
+ {
+  "type": "callout",
+  "variant": "tip",
+  "title": "Tip with a title",
+  "body": [
+   "Two paragraphs.",
+   "The second one."
+  ]
+ },
+ {
+  "type": "callout",
+  "variant": "warning",
+  "title": "Warning",
+  "body": [
+   "Mixing up 401 and 403 is a classic mistake."
+  ]
+ },
+ {
+  "type": "callout",
+  "variant": "definition",
+  "title": "Idempotent",
+  "body": [
+   "Doing it twice has the same effect as doing it once."
+  ]
+ },
+ {
+  "type": "callout",
+  "variant": "key_point",
+  "body": [
+   "==Remember this one thing.=="
+  ]
+ },
+ {
+  "type": "heading",
+  "level": 2,
+  "text": "Code"
+ },
+ {
+  "type": "code",
+  "language": "go",
+  "code": "func hash(key string) uint32 {\n\th := fnv.New32a()\n\th.Write([]byte(key))\n\treturn h.Sum32()\n}",
+  "caption": "FNV-1a hash in Go"
+ },
+ {
+  "type": "code",
+  "language": "",
+  "code": "plain text code block with a very long line that goes on and on and on to check whether long lines wrap rather than overflowing the right margin of the page"
+ },
+ {
+  "type": "heading",
+  "level": 2,
+  "text": "Tables"
+ },
+ {
+  "type": "table",
+  "columns": [
+   "Method",
+   "Safe",
+   "Idempotent"
+  ],
+  "rows": [
+   [
+    "GET",
+    "yes",
+    "yes"
+   ],
+   [
+    "PUT",
+    "no",
+    "yes"
+   ],
+   [
+    "POST",
+    "no",
+    "**no**"
+   ]
+  ],
+  "caption": "Short table"
+ },
+ {
+  "type": "table",
+  "columns": [
+   "Status",
+   "Name",
+   "Meaning",
+   "When to use",
+   "Retry?",
+   "Cacheable"
+  ],
+  "rows": [
+   [
+    "200",
+    "Name 0",
+    "Some meaning text that wraps",
+    "When the thing happens",
+    "no",
+    "maybe"
+   ],
+   [
+    "201",
+    "Name 1",
+    "Some meaning text that wraps",
+    "When the thing happens",
+    "no",
+    "maybe"
+   ],
+   [
+    "202",
+    "Name 2",
+    "Some meaning text that wraps",
+    "When the thing happens",
+    "no",
+    "maybe"
+   ],
+   [
+    "203",
+    "Name 3",
+    "Some meaning text that wraps",
+    "When the thing happens",
+    "no",
+    "maybe"
+   ],
+   [
+    "204",
+    "Name 4",
+    "Some meaning text that wraps",
+    "When the thing happens",
+    "no",
+    "maybe"
+   ],
+   [
+    "205",
+    "Name 5",
+    "Some meaning text that wraps",
+    "When the thing happens",
+    "no",
+    "maybe"
+   ],
+   [
+    "206",
+    "Name 6",
+    "Some meaning text that wraps",
+    "When the thing happens",
+    "no",
+    "maybe"
+   ],
+   [
+    "207",
+    "Name 7",
+    "Some meaning text that wraps",
+    "When the thing happens",
+    "no",
+    "maybe"
+   ],
+   [
+    "208",
+    "Name 8",
+    "Some meaning text that wraps",
+    "When the thing happens",
+    "no",
+    "maybe"
+   ],
+   [
+    "209",
+    "Name 9",
+    "Some meaning text that wraps",
+    "When the thing happens",
+    "no",
+    "maybe"
+   ],
+   [
+    "210",
+    "Name 10",
+    "Some meaning text that wraps",
+    "When the thing happens",
+    "no",
+    "maybe"
+   ],
+   [
+    "211",
+    "Name 11",
+    "Some meaning text that wraps",
+    "When the thing happens",
+    "no",
+    "maybe"
+   ],
+   [
+    "212",
+    "Name 12",
+    "Some meaning text that wraps",
+    "When the thing happens",
+    "no",
+    "maybe"
+   ],
+   [
+    "213",
+    "Name 13",
+    "Some meaning text that wraps",
+    "When the thing happens",
+    "no",
+    "maybe"
+   ],
+   [
+    "214",
+    "Name 14",
+    "Some meaning text that wraps",
+    "When the thing happens",
+    "no",
+    "maybe"
+   ],
+   [
+    "215",
+    "Name 15",
+    "Some meaning text that wraps",
+    "When the thing happens",
+    "no",
+    "maybe"
+   ],
+   [
+    "216",
+    "Name 16",
+    "Some meaning text that wraps",
+    "When the thing happens",
+    "no",
+    "maybe"
+   ],
+   [
+    "217",
+    "Name 17",
+    "Some meaning text that wraps",
+    "When the thing happens",
+    "no",
+    "maybe"
+   ],
+   [
+    "218",
+    "Name 18",
+    "Some meaning text that wraps",
+    "When the thing happens",
+    "no",
+    "maybe"
+   ],
+   [
+    "219",
+    "Name 19",
+    "Some meaning text that wraps",
+    "When the thing happens",
+    "no",
+    "maybe"
+   ],
+   [
+    "220",
+    "Name 20",
+    "Some meaning text that wraps",
+    "When the thing happens",
+    "no",
+    "maybe"
+   ],
+   [
+    "221",
+    "Name 21",
+    "Some meaning text that wraps",
+    "When the thing happens",
+    "no",
+    "maybe"
+   ],
+   [
+    "222",
+    "Name 22",
+    "Some meaning text that wraps",
+    "When the thing happens",
+    "no",
+    "maybe"
+   ],
+   [
+    "223",
+    "Name 23",
+    "Some meaning text that wraps",
+    "When the thing happens",
+    "no",
+    "maybe"
+   ],
+   [
+    "224",
+    "Name 24",
+    "Some meaning text that wraps",
+    "When the thing happens",
+    "no",
+    "maybe"
+   ]
+  ],
+  "caption": "Long six-column table (may split; header repeats)"
+ },
+ {
+  "type": "heading",
+  "level": 2,
+  "text": "Diagrams"
+ },
+ {
+  "type": "diagram",
+  "source": "client -> lb: HTTPS\nlb -> api1: route\nlb -> api2: route\napi1 -> db\napi2 -> db\napi1 -> cache\napi2 -> cache",
+  "caption": "Full-width flow diagram"
+ },
+ {
+  "type": "diagram",
+  "source": "shape: sequence_diagram\nclient -> server: GET /users/42\nserver -> db: SELECT\ndb -> server: row\nserver -> client: 200 OK",
+  "size": "half",
+  "caption": "Half-width sequence diagram"
+ },
+ {
+  "type": "diagram",
+  "source": "a -> b -> c",
+  "size": "small",
+  "caption": "Small"
+ },
+ {
+  "type": "heading",
+  "level": 2,
+  "text": "Active recall"
+ },
+ {
+  "type": "qa",
+  "question": "What does consistent hashing minimise?",
+  "answer": "The number of keys that move when a server is added or removed."
+ },
+ {
+  "type": "qa",
+  "question": "Why add virtual nodes?",
+  "answer": "To spread load evenly across servers.",
+  "hide_answer": true
+ },
+ {
+  "type": "qa",
+  "question": "What is the load on each of N servers with ideal hashing?",
+  "answer": "About 1/N of the keys.",
+  "hide_answer": true
+ },
+ {
+  "type": "fill_in",
+  "prompt": "Explain in your own words how a key finds its server.",
+  "lines": 4
+ },
+ {
+  "type": "spacer",
+  "size": "small"
+ },
+ {
+  "type": "divider"
+ },
+ {
+  "type": "spacer",
+  "size": "large"
+ },
+ {
+  "type": "paragraph",
+  "text": "Consistent hashing places both servers and keys on a ring. Each key belongs to the first server clockwise from it. Consistent hashing places both servers and keys on a ring. Each key belongs to the first server clockwise from it. Consistent hashing places both servers and keys on a ring. Each key belongs to the first server clockwise from it. Consistent hashing places both servers and keys on a ring. Each key belongs to the first server clockwise from it. Consistent hashing places both servers and keys on a ring. Each key belongs to the first server clockwise from it. Consistent hashing places both servers and keys on a ring. Each key belongs to the first server clockwise from it. "
+ },
+ {
+  "type": "page_break"
+ },
+ {
+  "type": "heading",
+  "level": 1,
+  "text": "After a page break"
+ },
+ {
+  "type": "paragraph",
+  "text": "Unicode: café, naïve, ½, →, ✓, 你好, emoji 🚀."
+ },
+ {
+  "type": "code",
+  "language": "python",
+  "code": "line_0 = 0 * 2  # long code block that may split\nline_1 = 1 * 2  # long code block that may split\nline_2 = 2 * 2  # long code block that may split\nline_3 = 3 * 2  # long code block that may split\nline_4 = 4 * 2  # long code block that may split\nline_5 = 5 * 2  # long code block that may split\nline_6 = 6 * 2  # long code block that may split\nline_7 = 7 * 2  # long code block that may split\nline_8 = 8 * 2  # long code block that may split\nline_9 = 9 * 2  # long code block that may split\nline_10 = 10 * 2  # long code block that may split\nline_11 = 11 * 2  # long code block that may split\nline_12 = 12 * 2  # long code block that may split\nline_13 = 13 * 2  # long code block that may split\nline_14 = 14 * 2  # long code block that may split\nline_15 = 15 * 2  # long code block that may split\nline_16 = 16 * 2  # long code block that may split\nline_17 = 17 * 2  # long code block that may split\nline_18 = 18 * 2  # long code block that may split\nline_19 = 19 * 2  # long code block that may split\nline_20 = 20 * 2  # long code block that may split\nline_21 = 21 * 2  # long code block that may split\nline_22 = 22 * 2  # long code block that may split\nline_23 = 23 * 2  # long code block that may split\nline_24 = 24 * 2  # long code block that may split\nline_25 = 25 * 2  # long code block that may split\nline_26 = 26 * 2  # long code block that may split\nline_27 = 27 * 2  # long code block that may split\nline_28 = 28 * 2  # long code block that may split\nline_29 = 29 * 2  # long code block that may split\nline_30 = 30 * 2  # long code block that may split\nline_31 = 31 * 2  # long code block that may split\nline_32 = 32 * 2  # long code block that may split\nline_33 = 33 * 2  # long code block that may split\nline_34 = 34 * 2  # long code block that may split\nline_35 = 35 * 2  # long code block that may split\nline_36 = 36 * 2  # long code block that may split\nline_37 = 37 * 2  # long code block that may split\nline_38 = 38 * 2  # long code block that may split\nline_39 = 39 * 2  # long code block that may split\nline_40 = 40 * 2  # long code block that may split\nline_41 = 41 * 2  # long code block that may split\nline_42 = 42 * 2  # long code block that may split\nline_43 = 43 * 2  # long code block that may split\nline_44 = 44 * 2  # long code block that may split\nline_45 = 45 * 2  # long code block that may split\nline_46 = 46 * 2  # long code block that may split\nline_47 = 47 * 2  # long code block that may split\nline_48 = 48 * 2  # long code block that may split\nline_49 = 49 * 2  # long code block that may split\nline_50 = 50 * 2  # long code block that may split\nline_51 = 51 * 2  # long code block that may split\nline_52 = 52 * 2  # long code block that may split\nline_53 = 53 * 2  # long code block that may split\nline_54 = 54 * 2  # long code block that may split\nline_55 = 55 * 2  # long code block that may split\nline_56 = 56 * 2  # long code block that may split\nline_57 = 57 * 2  # long code block that may split\nline_58 = 58 * 2  # long code block that may split\nline_59 = 59 * 2  # long code block that may split\nline_60 = 60 * 2  # long code block that may split\nline_61 = 61 * 2  # long code block that may split\nline_62 = 62 * 2  # long code block that may split\nline_63 = 63 * 2  # long code block that may split\nline_64 = 64 * 2  # long code block that may split\nline_65 = 65 * 2  # long code block that may split\nline_66 = 66 * 2  # long code block that may split\nline_67 = 67 * 2  # long code block that may split\nline_68 = 68 * 2  # long code block that may split\nline_69 = 69 * 2  # long code block that may split\nline_70 = 70 * 2  # long code block that may split\nline_71 = 71 * 2  # long code block that may split\nline_72 = 72 * 2  # long code block that may split\nline_73 = 73 * 2  # long code block that may split\nline_74 = 74 * 2  # long code block that may split\nline_75 = 75 * 2  # long code block that may split\nline_76 = 76 * 2  # long code block that may split\nline_77 = 77 * 2  # long code block that may split\nline_78 = 78 * 2  # long code block that may split\nline_79 = 79 * 2  # long code block that may split",
+  "caption": "80-line code block (longer than 40% of a page, so it may split)"
+ }
+]

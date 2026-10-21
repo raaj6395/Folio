@@ -2,6 +2,7 @@ package layout
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"testing"
@@ -55,5 +56,24 @@ func TestDiagramRender(t *testing.T) {
 	if d := os.Getenv("FOLIO_KEEP"); d != "" {
 		b.RenderPNG(context.Background(), nb, bs, []int{1, r.PageCount}, 70)
 		exec.Command("cp", "-R", b.Dir(nb.ID), d).Run()
+	}
+}
+
+func TestTallDiagramKeepsCaption(t *testing.T) {
+	b := builder(t)
+	for k := 0; k <= 30; k += 2 {
+		var raws []string
+		for range k {
+			raws = append(raws, `{"type":"paragraph","text":"filler line"}`)
+		}
+		raws = append(raws, `{"type":"diagram","source":"a -> b -> c -> d","caption":"Tall"}`)
+		bs := blocks(t, raws...)
+		r, err := b.Build(context.Background(), store.Notebook{ID: fmt.Sprintf("n_tall%d", k), Theme: "clean", Paper: "plain", Version: 1}, bs)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if d := r.Blocks[len(r.Blocks)-1]; d.Page != d.EndPage {
+			t.Fatalf("k=%d: diagram split from its caption: %+v", k, d)
+		}
 	}
 }

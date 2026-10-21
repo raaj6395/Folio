@@ -100,6 +100,18 @@ type previewIn struct {
 	Size   string `json:"size,omitempty" jsonschema:"full, half or small (default full); affects the reported on-page size"`
 }
 
+type ThemesOut struct {
+	Themes []layout.Theme `json:"themes"`
+	Papers []string       `json:"papers"`
+}
+
+type setThemeIn struct {
+	NotebookID      string `json:"notebook_id" jsonschema:"ID of the notebook"`
+	Theme           string `json:"theme" jsonschema:"Theme name from list_themes"`
+	Paper           string `json:"paper,omitempty" jsonschema:"plain, ruled, dotted or grid; default: the theme's paper"`
+	ExpectedVersion *int   `json:"expected_version,omitempty" jsonschema:"Reject unless the notebook is at this version"`
+}
+
 type ExportOut struct {
 	Path string `json:"path"`
 }
@@ -253,6 +265,30 @@ func (s *Server) register(m *mcp.Server) {
 			return nil, ExportOut{path}, err
 		})
 
+	addTool(m, "list_themes", "List available themes and paper backgrounds.",
+		func(ctx context.Context, _ *mcp.CallToolRequest, _ empty) (*mcp.CallToolResult, ThemesOut, error) {
+			return nil, ThemesOut{Themes: layout.Themes, Papers: papers}, nil
+		})
+
+	addTool(m, "set_theme", "Change a notebook's theme and optionally its paper. If paper is omitted, the theme's default paper is used.",
+		func(ctx context.Context, _ *mcp.CallToolRequest, in setThemeIn) (*mcp.CallToolResult, MutationResult, error) {
+			if err := validTheme(in.Theme); err != nil {
+				return nil, MutationResult{}, err
+			}
+			if in.Paper == "" {
+				in.Paper = defaultPaper(in.Theme)
+			}
+			if err := validPaper(in.Paper); err != nil {
+				return nil, MutationResult{}, err
+			}
+			res, err := s.mutate(ctx, in.NotebookID, in.ExpectedVersion, "set_theme", fmt.Sprintf("theme %s, paper %s", in.Theme, in.Paper),
+				func(nb *store.Notebook, bs []model.Block) ([]model.Block, []string, error) {
+					nb.Theme, nb.Paper = in.Theme, in.Paper
+					return bs, nil, nil
+				})
+			return nil, res, err
+		})
+
 	addTool(m, "get_authoring_guide", "How to write good Folio notes: every block type with an example, and style guidance. Read it once before writing.",
 		func(ctx context.Context, _ *mcp.CallToolRequest, _ empty) (*mcp.CallToolResult, any, error) {
 			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: guide}}}, nil, nil
@@ -260,13 +296,8 @@ func (s *Server) register(m *mcp.Server) {
 }
 
 func defaultPaper(theme string) string {
-	if theme == "notebook" {
-		return "ruled"
-	}
-	if theme == "dotgrid" {
-		return "dotted"
-	}
-	return "plain"
+	th, _ := layout.ThemeByName(theme)
+	return th.Paper
 }
 
 func checkDiagram(ctx context.Context, b model.Block) error {

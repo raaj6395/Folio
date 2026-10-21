@@ -250,3 +250,33 @@ func TestDiagrams(t *testing.T) {
 		t.Fatal(msg)
 	}
 }
+
+func TestThemes(t *testing.T) {
+	c := newClient(t)
+	var th ThemesOut
+	c.call("list_themes", map[string]any{}, &th)
+	if len(th.Themes) != 3 || len(th.Papers) != 4 {
+		t.Fatalf("%+v", th)
+	}
+	var nb NotebookInfo
+	c.call("create_notebook", map[string]any{"title": "T", "theme": "dotgrid"}, &nb)
+	if nb.Paper != "dotted" {
+		t.Fatal(nb.Paper)
+	}
+	var res MutationResult
+	c.call("append_blocks", map[string]any{"notebook_id": nb.ID, "blocks": blocksArg(`[{"type":"paragraph","text":"x"}]`)}, &res)
+	c.call("set_theme", map[string]any{"notebook_id": nb.ID, "theme": "notebook"}, &res)
+	var list map[string][]NotebookInfo
+	c.call("list_notebooks", map[string]any{}, &list)
+	if got := list["notebooks"][0]; got.Theme != "notebook" || got.Paper != "ruled" || got.PageCount != 1 {
+		t.Fatalf("%+v", got)
+	}
+	c.call("undo", map[string]any{"notebook_id": nb.ID}, &res)
+	c.call("list_notebooks", map[string]any{}, &list)
+	if got := list["notebooks"][0]; got.Theme != "dotgrid" || got.Paper != "dotted" {
+		t.Fatalf("undo theme: %+v", got)
+	}
+	if msg := c.callErr("set_theme", map[string]any{"notebook_id": nb.ID, "theme": "fancy"}); !strings.Contains(msg, "valid themes: clean, notebook, dotgrid") {
+		t.Fatal(msg)
+	}
+}
