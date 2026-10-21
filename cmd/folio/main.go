@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 
@@ -49,12 +50,26 @@ func setupLog(toStderr bool) {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(w, nil)))
 }
 
+func dsn() string {
+	if u := os.Getenv("FOLIO_DB_URL"); u != "" {
+		return u
+	}
+	return filepath.Join(home(), "folio.db")
+}
+
+func describeDSN(d string) string {
+	if u, err := url.Parse(d); err == nil && store.IsPostgres(d) {
+		return "postgres " + u.Redacted()
+	}
+	return "sqlite " + d
+}
+
 func open() (*store.Store, *layout.Builder) {
 	h := home()
 	if err := os.MkdirAll(h, 0o755); err != nil {
 		fatal(err)
 	}
-	st, err := store.Open(filepath.Join(h, "folio.db"))
+	st, err := store.Open(dsn())
 	if err != nil {
 		fatal(err)
 	}
@@ -126,13 +141,13 @@ func main() {
 			{Name: "typst", Run: doctor.TypstVersion},
 			{Name: "data dir", Run: func() (string, error) { return doctor.Writable(h) }},
 			{Name: "database", Run: func() (string, error) {
-				st, err := store.Open(filepath.Join(h, "folio.db"))
+				st, err := store.Open(dsn())
 				if err != nil {
-					return "", err
+					return "", fmt.Errorf("%s: %w", describeDSN(dsn()), err)
 				}
 				defer st.Close()
 				nbs, err := st.Notebooks()
-				return fmt.Sprintf("%d notebook(s) in %s", len(nbs), filepath.Join(h, "folio.db")), err
+				return fmt.Sprintf("%d notebook(s) in %s", len(nbs), describeDSN(dsn())), err
 			}},
 			{Name: "fonts", Run: func() (string, error) {
 				lb, err := layout.New(h)
