@@ -60,6 +60,7 @@ func (r *Result) Page(id string) int {
 
 type Builder struct {
 	Home  string
+	Root  string
 	fonts string
 	mu    sync.Mutex
 }
@@ -69,7 +70,7 @@ func New(home string) (*Builder, error) {
 	if err := extract(folio.Fonts, "fonts", fonts); err != nil {
 		return nil, fmt.Errorf("installing fonts: %w", err)
 	}
-	return &Builder{Home: home, fonts: fonts}, nil
+	return &Builder{Home: home, Root: "build", fonts: fonts}, nil
 }
 
 func (b *Builder) FontDir() string { return b.fonts }
@@ -95,7 +96,7 @@ func extract(src fs.FS, root, dst string) error {
 }
 
 func (b *Builder) Dir(notebookID string) string {
-	return filepath.Join(b.Home, "build", notebookID)
+	return filepath.Join(b.Home, b.Root, notebookID)
 }
 
 func (b *Builder) typst(ctx context.Context, dir string, args ...string) ([]byte, error) {

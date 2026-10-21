@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/raaj6395/folio/internal/layout"
 	"github.com/raaj6395/folio/internal/mcpserver"
 	"github.com/raaj6395/folio/internal/store"
+	"github.com/raaj6395/folio/internal/viewer"
 )
 
 const usage = `usage: folio <command>
@@ -83,6 +85,19 @@ func main() {
 		st, lb := open()
 		defer st.Close()
 		if err := mcpserver.New(st, lb, home()).Run(context.Background(), &mcp.StdioTransport{}); err != nil {
+			fatal(err)
+		}
+	case "serve":
+		setupLog(true)
+		fs := flag.NewFlagSet("serve", flag.ExitOnError)
+		port := fs.Int("port", viewer.DefaultPort, "port to listen on (bound to 127.0.0.1)")
+		fs.Parse(os.Args[2:])
+		st, lb := open()
+		defer st.Close()
+		lb.Root = "build-viewer"
+		addr := fmt.Sprintf("127.0.0.1:%d", *port)
+		fmt.Fprintf(os.Stderr, "Folio viewer on http://%s\n", addr)
+		if err := http.ListenAndServe(addr, viewer.New(st, lb)); err != nil {
 			fatal(err)
 		}
 	case "export":

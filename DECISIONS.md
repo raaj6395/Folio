@@ -110,3 +110,9 @@
 - **Why:** Spec 5.3 says nested blocks are directly addressable. The kitchen-sink check showed a split right column.
 - **Alternatives considered:** a `parent_id` column in the blocks table (the nested order and positions would need their own keys, for little gain).
 - **Affects interface/behaviour?** yes (insert/move don't take nested IDs) — **User approved?** no — flagged in PROGRESS.
+
+## 2026-10-22 — Viewer
+- **Decision:** `folio serve` is plain `net/http` with embedded HTML templates and vanilla JS. It binds 127.0.0.1 only. It builds into `~/.folio/build-viewer/` so it never races the MCP process over `build/` (each builder's lock is per process). SSE polls `notebooks.version` every 500ms per connection and sends `{version, page_count, pages: [signature…]}`, where a page signature hashes the blocks on that page (data and y position) plus title/theme/paper. The browser reloads only pages whose signature changed and flashes them for 2 seconds. The first page request renders all pages of that version in one Typst call, at 110 ppi. `get_viewer_url` probes `/healthz`.
+- **Why:** Spec 9. Each process owning its build dir avoids cross-process file locking.
+- **Alternatives considered:** fsnotify on the DB file (new dependency; WAL writes make it noisy).
+- **Affects interface/behaviour?** no — **User approved?** n.a.

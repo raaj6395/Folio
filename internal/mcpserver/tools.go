@@ -16,6 +16,7 @@ import (
 	"github.com/raaj6395/folio/internal/layout"
 	"github.com/raaj6395/folio/internal/model"
 	"github.com/raaj6395/folio/internal/store"
+	"github.com/raaj6395/folio/internal/viewer"
 )
 
 type empty struct{}
@@ -111,6 +112,12 @@ type setThemeIn struct {
 	Theme           string `json:"theme" jsonschema:"Theme name from list_themes"`
 	Paper           string `json:"paper,omitempty" jsonschema:"plain, ruled, dotted or grid; default: the theme's paper"`
 	ExpectedVersion *int   `json:"expected_version,omitempty" jsonschema:"Reject unless the notebook is at this version"`
+}
+
+type ViewerOut struct {
+	URL     string `json:"url"`
+	Running bool   `json:"running"`
+	Hint    string `json:"hint,omitempty"`
 }
 
 type ExportOut struct {
@@ -291,6 +298,18 @@ func (s *Server) register(m *mcp.Server) {
 					return bs, nil, nil
 				})
 			return nil, res, err
+		})
+
+	addTool(m, "get_viewer_url", "URL of the live web viewer for a notebook, where the user can watch pages update as you write. Also says whether the viewer is running (start it with `folio serve`).",
+		func(ctx context.Context, _ *mcp.CallToolRequest, in notebookIn) (*mcp.CallToolResult, ViewerOut, error) {
+			if _, err := s.st.Notebook(in.NotebookID); err != nil {
+				return nil, ViewerOut{}, err
+			}
+			out := ViewerOut{URL: fmt.Sprintf("http://localhost:%d/n/%s", viewer.DefaultPort, in.NotebookID), Running: viewer.Running(viewer.DefaultPort)}
+			if !out.Running {
+				out.Hint = "The viewer is not running. Ask the user to run `folio serve` in a terminal, then open the URL."
+			}
+			return nil, out, nil
 		})
 
 	addTool(m, "get_authoring_guide", "How to write good Folio notes: every block type with an example, and style guidance. Read it once before writing.",
