@@ -1,12 +1,14 @@
 # Folio — Progress
 
-**Last updated:** 2026-10-22 00:10
-**Current milestone:** M3
-**Current task:** M3.1 — D2 diagram block
-**Overall status:** On track
+**Last updated:** 2026-10-22 00:30
+**Current milestone:** M3 complete (M4 optional, needs your approval)
+**Current task:** none — waiting for user checks (see Open questions)
+**Overall status:** Needs user input
 
 ## Status summary
-Milestones 0, 1 and 2 are done. Claude Code can create a notebook, append core blocks (heading, paragraph, bullets, numbered, callout, code, divider, page_break), get an outline with page numbers, render pages as PNG and export a PDF, all with the `clean` theme. Milestone 2 added targeted editing (insert/update/delete/move/read), versions/undo/restore with optimistic concurrency, per-block page/position info, pagination rules (keep-with-next, no-split under 40%) with warnings, and table/qa/fill_in/spacer blocks. Not built yet: diagrams, the notebook/dotgrid themes, two_column, the viewer.
+Milestones 0–3 are done: the whole v1 scope of the spec. Claude Code can create a notebook, append core blocks (heading, paragraph, bullets, numbered, callout, code, divider, page_break), get an outline with page numbers, render pages as PNG and export a PDF, all with the `clean` theme. Milestone 2 added targeted editing (insert/update/delete/move/read), versions/undo/restore with optimistic concurrency, per-block page/position info, pagination rules (keep-with-next, no-split under 40%) with warnings, and table/qa/fill_in/spacer blocks. Milestone 3 added D2 diagrams (validated at write time, cached, font-matched, size-capped), the notebook and dotgrid themes with ruled/dotted/grid paper, two_column with addressable nested blocks, the `folio serve` live viewer, and a tuned authoring guide and README.
+
+**M3 acceptance (2026-10-22):** kitchen sink renders in all 3 themes (checked by Claude; **needs your human check**: `make kitchen-sink`, then open `build/kitchen-sink/*.pdf`). The viewer pushed live SSE updates while headless Claude wrote Kafka notes (**please confirm in a browser**: `bin/folio serve`, open http://localhost:7420). New-topic session (TCP handshake, notebook theme) came out readable with no manual fixes: `~/.folio/exports/tcp-three-way-handshake-connection-teardown-2026-10-22.pdf`.
 
 **M2 acceptance (2026-10-22):** Headless Claude (sonnet) was asked to "add a comparison table of HTTP methods after the methods section" of `n_hku4c2ig`. It used get_outline and inserted the table right after the section's last block. I checked every outline page against `pdftotext`: all match (one false alarm from inline-code spacing in pdftotext output). `undo` removed the table (3→2 pages) and `restore_version` brought it back. Seen: the table sat alone on page 2 because of an existing page_break, so I added a warning for pages under 30% full that end in a page_break.
 
@@ -46,12 +48,12 @@ Legend: [ ] todo · [~] in progress · [x] done · [!] blocked
 - [x] M2.6 Build caching and performance measurement — `793da13` — verified: `FOLIO_PERF=1 go test ./internal/layout -run Perf -v`
 
 ### Milestone 3 — Diagrams, themes, viewer
-- [ ] M3.1 D2 diagram block, preview_diagram
-- [ ] M3.2 notebook + dotgrid themes, set_theme, list_themes, fonts
-- [ ] M3.3 two_column block
-- [ ] M3.4 folio serve viewer + SSE, get_viewer_url
-- [ ] M3.5 Final authoring guide, tuned on 3 notebooks
-- [ ] M3.6 README polish
+- [x] M3.1 D2 diagram block, preview_diagram — `0bb2f5c` — verified: diagram tests (font retarget, error line numbers, cache keys), Fit tests, rendered page inspected
+- [x] M3.2 notebook + dotgrid themes, set_theme, list_themes, fonts — `e0205ab` — verified: TestThemes, kitchen sink in all themes, caption-split regression sweep
+- [x] M3.3 two_column block — `a9310aa` — verified: TestTwoColumn (nested update/read/delete, move refused, ID round-trip), kitchen sink page inspected
+- [x] M3.4 folio serve viewer + SSE, get_viewer_url — `4185392` — verified: TestViewer (SSE update in ~570ms), live run with curl: SSE pushed v1→v6 while Claude wrote Kafka notes; page JS passes `node --check`. Not yet checked in a real browser by a human.
+- [x] M3.5 Final authoring guide, tuned on 3 notebooks — `d018f45` — verified: REST/consistent hashing/Kafka generated, friction reports acted on, then TCP notes on a new topic came out readable with no manual fixes
+- [x] M3.6 README polish — `312ce41` — verified: commands in README checked against `--help`; screenshots from generated notebooks
 
 ### Milestone 4 — Free-form layer (optional, ask first)
 - [ ] M4 Not started — needs user approval
@@ -60,23 +62,40 @@ Legend: [ ] todo · [~] in progress · [x] done · [!] blocked
 - (none)
 
 ## Open questions for the user
+- Please check the kitchen-sink PDFs and the live viewer in a browser (the two human checks M3 acceptance asks for).
+- Milestone 4 (free-form layer) is optional. Build it?
+- `insert_blocks`/`move_blocks` refuse nested (two_column) IDs; only update/delete/read accept them (DECISIONS.md). OK?
 - Undo semantics: repeated `undo` walks further back; `undo` after `restore_version` reverts the restore (DECISIONS.md). OK?
 - Links: only http/https/mailto become clickable; other schemes render as plain text (DECISIONS.md). OK?
 
 ## Known issues / tech debt
-- (none)
+- Sequence diagrams: D2 places self-loop labels across the lifeline.
+- Ruled paper lines are decorative and don't align with text baselines.
+- Callouts in the notebook theme have clean rounded borders, not irregular hand-drawn ones (the spec said "if feasible").
+- `go test` prints INFO/WARN slog lines to stderr (harmless noise).
+- Old `build/` and `build-viewer/` dirs for deleted notebooks are never pruned.
 
 ## Performance measurements
 | Date | Notebook | Pages | Rebuild time | Notes |
 |---|---|---|---|---|
 | 2026-10-22 | synthetic (perf_test) | 10 (133 blocks) | 147 ms avg of 5 | Apple M1, parallel compile+eval, clean theme; cached 0.2 ms |
 | 2026-10-22 | synthetic (perf_test) | 30 (413 blocks) | 274 ms avg of 5 | same; cached 0.5 ms |
+| 2026-10-22 | synthetic (perf_test) | 10 (133 blocks) | 156 ms avg of 5 | after M3 (more template work per block); cached 0.2 ms |
+| 2026-10-22 | synthetic (perf_test) | 30 (413 blocks) | 303 ms avg of 5 | after M3; cached 0.5 ms |
 
 ## Kitchen sink visual check
 | Date | Theme | Result | Issues seen |
 |---|---|---|---|
+| 2026-10-22 | clean (plain + grid) | Good (checked by Claude, not yet by a human) | Found and fixed: a tall diagram's caption split onto the next page; two_column's right column split across pages. Remaining: sequence-diagram self-loop labels cross a lifeline (D2 placement). |
+| 2026-10-22 | notebook | Good (checked by Claude) | Ruled lines don't align with text baselines (by design, see DECISIONS). Kalam lacks the `‣` list marker, so Libertinus is the fallback for it. |
+| 2026-10-22 | dotgrid | Good (checked by Claude) | none |
 
 ## Session log
+### 2026-10-22 — Session 1 (end)
+- Did: M3.1–M3.6. Ran 4 headless Claude note sessions (REST, consistent hashing, Kafka, TCP) and fixed what they and the kitchen sink exposed.
+- Verified: `go vet` clean; all tests green (model, store, layout, diagram, mcpserver, viewer); perf 156ms/10 pages, 303ms/30 pages.
+- Problems: Typst ignores SVG `@font-face` (fixed by retargeting fonts and registering them with D2); D2 measured labels with its own font, so line gaps were too narrow (fixed); the layout cache didn't change when templates did (now keyed by template hash).
+- Next: user checks (kitchen sink PDFs, viewer in a browser); decide on M4.
 ### 2026-10-22 — Session 1 (continued)
 - Did: M2.1–M2.6, M2 acceptance.
 - Verified: all package tests green; perf numbers above.
