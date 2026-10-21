@@ -25,6 +25,8 @@ Text fields accept only: `**bold**`, `*italic*`, `` `code` ``, `[text](url)`, `=
 {"type": "qa", "question": "Why is PUT idempotent?", "answer": "It sets the resource to the given state; repeating it changes nothing.", "hide_answer": true}
 {"type": "fill_in", "prompt": "Explain statelessness in your own words.", "lines": 3}
 {"type": "spacer", "size": "medium"}
+{"type": "diagram", "source": "client -> api: request\napi -> db: query", "size": "half", "caption": "Request path"}
+{"type": "two_column", "left": [{"type": "paragraph", "text": "**Pros**: fast lookups"}], "right": [{"type": "paragraph", "text": "**Cons**: rebalancing"}]}
 {"type": "divider"}
 {"type": "page_break"}
 ```

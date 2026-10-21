@@ -5,9 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
-	"os"
 	"testing"
 
 	"github.com/raaj6395/folio/internal/model"

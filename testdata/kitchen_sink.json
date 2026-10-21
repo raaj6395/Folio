@@ -426,6 +426,57 @@
   "text": "Consistent hashing places both servers and keys on a ring. Each key belongs to the first server clockwise from it. Consistent hashing places both servers and keys on a ring. Each key belongs to the first server clockwise from it. Consistent hashing places both servers and keys on a ring. Each key belongs to the first server clockwise from it. Consistent hashing places both servers and keys on a ring. Each key belongs to the first server clockwise from it. Consistent hashing places both servers and keys on a ring. Each key belongs to the first server clockwise from it. Consistent hashing places both servers and keys on a ring. Each key belongs to the first server clockwise from it. "
  },
  {
+  "type": "heading",
+  "level": 2,
+  "text": "Two columns"
+ },
+ {
+  "type": "two_column",
+  "left": [
+   {
+    "type": "paragraph",
+    "text": "**Left column.** Short explanation that wraps inside half the page width."
+   },
+   {
+    "type": "bullets",
+    "items": [
+     {
+      "text": "Pro: fast"
+     },
+     {
+      "text": "Con: memory"
+     }
+    ]
+   },
+   {
+    "type": "code",
+    "language": "go",
+    "code": "x := ring.Get(key)"
+   }
+  ],
+  "right": [
+   {
+    "type": "callout",
+    "variant": "definition",
+    "title": "Ring",
+    "body": [
+     "A hash space bent into a circle."
+    ]
+   },
+   {
+    "type": "diagram",
+    "source": "key -> node1\nnode1 -> node2\nnode2 -> node3",
+    "size": "half",
+    "caption": "Clockwise lookup"
+   },
+   {
+    "type": "qa",
+    "question": "Who owns a key?",
+    "answer": "The first node clockwise."
+   }
+  ]
+ },
+ {
   "type": "page_break"
  },
  {

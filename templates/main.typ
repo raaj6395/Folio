@@ -74,9 +74,9 @@
 
 #let content-height = 257mm
 
-#let nosplit(body, above: auto, below: auto, never: false) = layout(size => {
+#let nosplit(body, above: auto, below: auto, never: false, limit: 0.4) = layout(size => {
   let h = measure(block(width: size.width, body)).height
-  block(width: 100%, breakable: not never and h > 0.4 * content-height, above: above, below: below, body)
+  block(width: 100%, breakable: not never and h > limit * content-height, above: above, below: below, body)
 })
 
 #let caption(xs) = if xs.len() > 0 {
@@ -180,6 +180,14 @@
       mark(b.id)
       layout(size => align(center, image(b.svg, width: calc.min(b.width_mm * 1mm, size.width))))
       caption(b.caption)
+      endmark(b.id)
+    }))
+  } else if ty == "two_column" {
+    nosplit(above: 1em, below: 1em, limit: 0.9, block(width: 100%, {
+      mark(b.id)
+      grid(columns: (1fr, 1fr), column-gutter: 7mm,
+        { for k in b.left { render(k) } },
+        { for k in b.right { render(k) } })
       endmark(b.id)
     }))
   } else if ty == "divider" {

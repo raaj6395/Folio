@@ -77,6 +77,9 @@ func afterIndex(bs []model.Block, after string) (int, error) {
 	if after == "start" {
 		return 0, nil
 	}
+	if err := topLevelOnly(bs, after); err != nil {
+		return 0, err
+	}
 	i := indexOf(bs, after)
 	if i < 0 {
 		return 0, fmt.Errorf("after_block_id %q not found in this notebook; use a block ID from get_outline, or \"start\"", after)
@@ -84,10 +87,19 @@ func afterIndex(bs []model.Block, after string) (int, error) {
 	return i + 1, nil
 }
 
+func topLevelOnly(bs []model.Block, ids ...string) error {
+	for _, id := range ids {
+		if p := parentOf(bs, id); p >= 0 {
+			return fmt.Errorf("block %s is inside two_column %s; only update_block, delete_blocks and read_blocks work on nested blocks (use the two_column's ID here)", id, bs[p].ID)
+		}
+	}
+	return nil
+}
+
 func missing(bs []model.Block, ids []string) error {
 	var miss []string
 	for _, id := range ids {
-		if indexOf(bs, id) < 0 {
+		if _, ok := findAny(bs, id); !ok {
 			miss = append(miss, id)
 		}
 	}
@@ -126,15 +138,35 @@ func (s *Server) registerEdit(m *mcp.Server) {
 				return nil, MutationResult{}, fmt.Errorf("block (%s): %v", upd.Type, err)
 			}
 			if err := checkDiagram(ctx, upd); err != nil {
-				return nil, MutationResult{}, fmt.Errorf("block (diagram): %v", err)
+				return nil, MutationResult{}, fmt.Errorf("block (%s): %v", upd.Type, err)
 			}
 			res, err := s.mutate(ctx, in.NotebookID, in.ExpectedVersion, "update_block", "updated "+in.BlockID,
 				func(_ *store.Notebook, bs []model.Block) ([]model.Block, []string, error) {
-					i := indexOf(bs, in.BlockID)
-					if i < 0 {
+					if i := indexOf(bs, in.BlockID); i >= 0 {
+						old := map[string]bool{}
+						for _, k := range bs[i].Children() {
+							old[k.ID] = true
+						}
+						bs[i].Type, bs[i].Data = upd.Type, upd.Data
+						bs[i] = bs[i].RenewIDs(func(id string) bool { return old[id] })
+						return bs, []string{in.BlockID}, nil
+					}
+					p := parentOf(bs, in.BlockID)
+					if p < 0 {
 						return nil, nil, missing(bs, []string{in.BlockID})
 					}
-					bs[i].Type, bs[i].Data = upd.Type, upd.Data
+					edited := bs[p].WithChildren(func(_ string, kids []model.Block) []model.Block {
+						for i := range kids {
+							if kids[i].ID == in.BlockID {
+								kids[i].Type, kids[i].Data = upd.Type, upd.Data
+							}
+						}
+						return kids
+					})
+					var err error
+					if bs[p], err = revalidate(edited); err != nil {
+						return nil, nil, err
+					}
 					return bs, []string{in.BlockID}, nil
 				})
 			return nil, res, err
@@ -150,7 +182,25 @@ func (s *Server) registerEdit(m *mcp.Server) {
 					if err := missing(bs, in.BlockIDs); err != nil {
 						return nil, nil, err
 					}
-					return slices.DeleteFunc(bs, func(b model.Block) bool { return slices.Contains(in.BlockIDs, b.ID) }), nil, nil
+					bs = slices.DeleteFunc(bs, func(b model.Block) bool { return slices.Contains(in.BlockIDs, b.ID) })
+					for i, b := range bs {
+						if b.Type != "two_column" {
+							continue
+						}
+						var emptied string
+						edited := b.WithChildren(func(side string, kids []model.Block) []model.Block {
+							kids = slices.DeleteFunc(kids, func(k model.Block) bool { return slices.Contains(in.BlockIDs, k.ID) })
+							if len(kids) == 0 {
+								emptied = side
+							}
+							return kids
+						})
+						if emptied != "" {
+							return nil, nil, fmt.Errorf("deleting would leave the %s column of two_column %s empty; delete the two_column itself or update it", emptied, b.ID)
+						}
+						bs[i] = edited
+					}
+					return bs, nil, nil
 				})
 			return nil, res, err
 		})
@@ -166,6 +216,9 @@ func (s *Server) registerEdit(m *mcp.Server) {
 			res, err := s.mutate(ctx, in.NotebookID, in.ExpectedVersion, "move_blocks", fmt.Sprintf("moved %d block(s) after %s", len(in.BlockIDs), in.AfterBlockID),
 				func(_ *store.Notebook, bs []model.Block) ([]model.Block, []string, error) {
 					if err := missing(bs, in.BlockIDs); err != nil {
+						return nil, nil, err
+					}
+					if err := topLevelOnly(bs, in.BlockIDs...); err != nil {
 						return nil, nil, err
 					}
 					var moved, rest []model.Block
@@ -213,9 +266,13 @@ func (s *Server) registerEdit(m *mcp.Server) {
 					return nil, nil, err
 				}
 				for _, id := range in.BlockIDs {
-					sel = append(sel, bs[indexOf(bs, id)])
+					b, _ := findAny(bs, id)
+					sel = append(sel, b)
 				}
 			case in.FromBlockID != "":
+				if err := topLevelOnly(bs, in.FromBlockID); err != nil {
+					return nil, nil, err
+				}
 				i := indexOf(bs, in.FromBlockID)
 				if i < 0 {
 					return nil, nil, missing(bs, []string{in.FromBlockID})

@@ -48,6 +48,7 @@ const blockDescription = `One block. Set "type" plus that type's fields:
 - qa: question, answer, hide_answer? (bool; true prints the answer upside down at the page bottom for self-testing).
 - fill_in: prompt, lines (1-15). Blank ruled lines for the reader to write on.
 - spacer: size (small|medium|large). Vertical space.
+- two_column: left: [blocks], right: [blocks]. Side-by-side columns. Nested blocks may be paragraph, bullets, numbered, callout, code, diagram (size half or small) or qa; they get their own IDs, which update_block, delete_blocks and read_blocks accept.
 - diagram: source (D2 language, e.g. "client -> server: request"), size? (full|half|small, default full), caption?. Compile errors are returned with line numbers; use preview_diagram to check one first.
 - divider: no fields. Horizontal rule.
 - page_break: no fields. Starts a new page.
@@ -184,7 +185,43 @@ func newIDs(bs []model.Block) []string {
 	ids := make([]string, len(bs))
 	for i := range bs {
 		bs[i].ID = model.NewID("b_")
+		bs[i] = bs[i].RenewIDs(func(string) bool { return false })
 		ids[i] = bs[i].ID
 	}
 	return ids
+}
+
+func parentOf(bs []model.Block, id string) int {
+	for i, b := range bs {
+		for _, k := range b.Children() {
+			if k.ID == id {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+func findAny(bs []model.Block, id string) (model.Block, bool) {
+	if i := indexOf(bs, id); i >= 0 {
+		return bs[i], true
+	}
+	if p := parentOf(bs, id); p >= 0 {
+		for _, k := range bs[p].Children() {
+			if k.ID == id {
+				return k, true
+			}
+		}
+	}
+	return model.Block{}, false
+}
+
+func revalidate(b model.Block) (model.Block, error) {
+	js, _ := json.Marshal(b)
+	nb, err := model.Parse(js)
+	if err != nil {
+		return b, fmt.Errorf("two_column %s: %v", b.ID, err)
+	}
+	nb.ID, nb.Position, nb.CreatedAt = b.ID, b.Position, b.CreatedAt
+	return nb, nil
 }

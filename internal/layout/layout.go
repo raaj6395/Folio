@@ -44,12 +44,13 @@ type Result struct {
 	Blocks       []Pos         `json:"blocks"`
 	LastPageFill float64       `json:"last_page_fill_pct"`
 	PageFill     []float64     `json:"page_fill_pct"`
+	Nested       []Pos         `json:"nested,omitempty"`
 	Warnings     []string      `json:"warnings"`
 	Elapsed      time.Duration `json:"-"`
 }
 
 func (r *Result) Page(id string) int {
-	for _, p := range r.Blocks {
+	for _, p := range append(r.Blocks, r.Nested...) {
 		if p.ID == id {
 			return p.Page
 		}
@@ -192,7 +193,6 @@ func (b *Builder) build(ctx context.Context, nb store.Notebook, blocks []model.B
 	slog.Info("built notebook", "id", nb.ID, "version", nb.Version, "pages", r.PageCount, "ms", r.Elapsed.Milliseconds())
 	return r, nil
 }
-
 
 func (b *Builder) RenderPNG(ctx context.Context, nb store.Notebook, blocks []model.Block, pages []int, ppi int) ([][]byte, error) {
 	b.mu.Lock()

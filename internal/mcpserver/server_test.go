@@ -280,3 +280,52 @@ func TestThemes(t *testing.T) {
 		t.Fatal(msg)
 	}
 }
+
+func TestTwoColumn(t *testing.T) {
+	c := newClient(t)
+	var nb NotebookInfo
+	c.call("create_notebook", map[string]any{"title": "TC"}, &nb)
+	if msg := c.callErr("append_blocks", map[string]any{"notebook_id": nb.ID, "blocks": blocksArg(`[{"type":"two_column","left":[{"type":"heading","level":2,"text":"x"}],"right":[{"type":"paragraph","text":"y"}]}]`)}); !strings.Contains(msg, "left[0]: type heading is not allowed inside two_column") {
+		t.Fatal(msg)
+	}
+	var res MutationResult
+	c.call("append_blocks", map[string]any{"notebook_id": nb.ID, "blocks": blocksArg(`[
+		{"type":"two_column","left":[{"type":"paragraph","text":"left text"},{"type":"diagram","source":"a -> b","size":"half"}],
+		 "right":[{"type":"callout","variant":"tip","body":["right tip"]},{"type":"qa","question":"q?","answer":"a"}]},
+		{"type":"paragraph","text":"after"}]`)}, &res)
+	tc := res.ChangedBlockIDs[0]
+	var out Outline
+	c.call("get_outline", map[string]any{"notebook_id": nb.ID}, &out)
+	if len(out.Blocks) != 6 || out.Blocks[1].Parent != tc || out.Blocks[1].Page != 1 || out.Blocks[3].Type != "callout" {
+		t.Fatalf("outline: %+v", out.Blocks)
+	}
+	left := out.Blocks[1].ID
+	c.call("update_block", map[string]any{"notebook_id": nb.ID, "block_id": left, "block": json.RawMessage(`{"type":"paragraph","text":"edited left"}`)}, &res)
+	c.call("get_outline", map[string]any{"notebook_id": nb.ID}, &out)
+	if out.Blocks[1].ID != left || out.Blocks[1].Summary != "edited left" {
+		t.Fatalf("nested update: %+v", out.Blocks[1])
+	}
+	if msg := c.callErr("update_block", map[string]any{"notebook_id": nb.ID, "block_id": left, "block": json.RawMessage(`{"type":"divider"}`)}); !strings.Contains(msg, "type divider is not allowed inside two_column") {
+		t.Fatal(msg)
+	}
+	var rb map[string][]ReadBlock
+	c.call("read_blocks", map[string]any{"notebook_id": nb.ID, "block_ids": []string{out.Blocks[3].ID}}, &rb)
+	if rb["blocks"][0].Block.Type != "callout" {
+		t.Fatalf("%+v", rb)
+	}
+	c.call("delete_blocks", map[string]any{"notebook_id": nb.ID, "block_ids": []string{out.Blocks[4].ID}}, &res)
+	if msg := c.callErr("delete_blocks", map[string]any{"notebook_id": nb.ID, "block_ids": []string{out.Blocks[3].ID}}); !strings.Contains(msg, "right column") {
+		t.Fatal(msg)
+	}
+	if msg := c.callErr("move_blocks", map[string]any{"notebook_id": nb.ID, "block_ids": []string{left}, "after_block_id": "start"}); !strings.Contains(msg, "is inside two_column "+tc) {
+		t.Fatal(msg)
+	}
+	var full map[string][]map[string]json.RawMessage
+	c.call("read_blocks", map[string]any{"notebook_id": nb.ID, "block_ids": []string{tc}}, &full)
+	js := full["blocks"][0]["block"]
+	c.call("update_block", map[string]any{"notebook_id": nb.ID, "block_id": tc, "block": json.RawMessage(js)}, &res)
+	c.call("get_outline", map[string]any{"notebook_id": nb.ID}, &out)
+	if out.Blocks[1].ID != left {
+		t.Fatal("nested IDs must survive a round-trip update of the parent")
+	}
+}

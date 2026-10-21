@@ -61,6 +61,7 @@ type appendIn struct {
 
 type OutlineEntry struct {
 	ID      string `json:"id"`
+	Parent  string `json:"parent,omitempty"`
 	Type    string `json:"type"`
 	Page    int    `json:"page"`
 	Summary string `json:"summary"`
@@ -186,6 +187,9 @@ func (s *Server) register(m *mcp.Server) {
 			out := Outline{NotebookID: nb.ID, Title: nb.Title, Version: nb.Version, Theme: nb.Theme, PageCount: r.PageCount, Blocks: []OutlineEntry{}}
 			for _, b := range bs {
 				out.Blocks = append(out.Blocks, OutlineEntry{ID: b.ID, Type: b.Type, Page: r.Page(b.ID), Summary: b.Summary()})
+				for _, k := range b.Children() {
+					out.Blocks = append(out.Blocks, OutlineEntry{ID: k.ID, Parent: b.ID, Type: k.Type, Page: r.Page(k.ID), Summary: k.Summary()})
+				}
 			}
 			return nil, out, nil
 		})
@@ -301,7 +305,7 @@ func defaultPaper(theme string) string {
 }
 
 func checkDiagram(ctx context.Context, b model.Block) error {
-	if src, _, ok := b.DiagramSource(); ok {
+	for _, src := range b.DiagramSources() {
 		if _, err := diagram.Render(ctx, src, diagram.Style{}); err != nil {
 			return err
 		}
@@ -322,7 +326,7 @@ func parseBlocks(ctx context.Context, raws []json.RawMessage) ([]model.Block, er
 	}
 	for i, b := range bs {
 		if err := checkDiagram(ctx, b); err != nil {
-			return nil, fmt.Errorf("block[%d] (diagram): %v", i, err)
+			return nil, fmt.Errorf("block[%d] (%s): %v", i, b.Type, err)
 		}
 	}
 	return bs, nil

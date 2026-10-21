@@ -41,6 +41,9 @@ func analyze(marks []mark, blocks []model.Block) *Result {
 		}
 		i, ok := idx[m.ID]
 		if !ok {
+			if m.K == "s" {
+				r.Nested = append(r.Nested, Pos{ID: m.ID, Page: m.Page, YMM: round1(mm)})
+			}
 			continue
 		}
 		p := &r.Blocks[i]

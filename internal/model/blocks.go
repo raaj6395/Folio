@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -50,6 +51,7 @@ var registry = map[string]func() data{
 	"fill_in":    func() data { return &FillIn{} },
 	"spacer":     func() data { return &Spacer{} },
 	"diagram":    func() data { return &Diagram{} },
+	"two_column": func() data { return &TwoColumn{} },
 	"divider":    func() data { return &Empty{} },
 	"page_break": func() data { return &Empty{} },
 }
@@ -430,6 +432,133 @@ func (b Block) DiagramSource() (src, size string, ok bool) {
 	}
 	d := b.decode().(*Diagram)
 	return d.Source, d.Size, true
+}
+
+var nestable = []string{"paragraph", "bullets", "numbered", "callout", "code", "diagram", "qa"}
+
+var validID = regexp.MustCompile(`^b_[a-z2-7]{8}$`)
+
+type TwoColumn struct {
+	Left  []json.RawMessage `json:"left"`
+	Right []json.RawMessage `json:"right"`
+}
+
+func (tc *TwoColumn) validate() error {
+	for _, side := range []struct {
+		name string
+		raws *[]json.RawMessage
+	}{{"left", &tc.Left}, {"right", &tc.Right}} {
+		if len(*side.raws) == 0 {
+			return fmt.Errorf("%s must contain at least one block", side.name)
+		}
+		for i, raw := range *side.raws {
+			b, err := Parse(raw)
+			if err != nil {
+				return fmt.Errorf("%s[%d] (%s): %v", side.name, i, b.Type, err)
+			}
+			if !slices.Contains(nestable, b.Type) {
+				return fmt.Errorf("%s[%d]: type %s is not allowed inside two_column; allowed: %s", side.name, i, b.Type, strings.Join(nestable, ", "))
+			}
+			if src, size, _ := b.DiagramSource(); src != "" && size == "full" {
+				return fmt.Errorf(`%s[%d] (diagram): size must be "half" or "small" inside two_column`, side.name, i)
+			}
+			var head struct {
+				ID string `json:"id"`
+			}
+			json.Unmarshal(raw, &head)
+			b.ID = head.ID
+			if !validID.MatchString(b.ID) {
+				b.ID = NewID("b_")
+			}
+			(*side.raws)[i], _ = json.Marshal(b)
+		}
+	}
+	return nil
+}
+
+func (tc *TwoColumn) children() (left, right []Block) {
+	conv := func(raws []json.RawMessage) []Block {
+		var out []Block
+		for _, raw := range raws {
+			var fields map[string]json.RawMessage
+			json.Unmarshal(raw, &fields)
+			var b Block
+			json.Unmarshal(fields["id"], &b.ID)
+			json.Unmarshal(fields["type"], &b.Type)
+			delete(fields, "id")
+			delete(fields, "type")
+			b.Data, _ = json.Marshal(fields)
+			out = append(out, b)
+		}
+		return out
+	}
+	return conv(tc.Left), conv(tc.Right)
+}
+
+func (tc *TwoColumn) doc() map[string]any {
+	l, r := tc.children()
+	docs := func(bs []Block) []map[string]any {
+		out := []map[string]any{}
+		for _, b := range bs {
+			out = append(out, b.Doc())
+		}
+		return out
+	}
+	return map[string]any{"left": docs(l), "right": docs(r)}
+}
+
+func (tc *TwoColumn) summary() string {
+	l, r := tc.children()
+	return fmt.Sprintf("two columns: %d left / %d right; %s | %s", len(l), len(r), l[0].Summary(), r[0].Summary())
+}
+
+func (b Block) Children() []Block {
+	if b.Type != "two_column" {
+		return nil
+	}
+	l, r := b.decode().(*TwoColumn).children()
+	return append(l, r...)
+}
+
+func (b Block) WithChildren(edit func(side string, kids []Block) []Block) Block {
+	tc := b.decode().(*TwoColumn)
+	l, r := tc.children()
+	enc := func(bs []Block) []json.RawMessage {
+		out := []json.RawMessage{}
+		for _, k := range bs {
+			js, _ := json.Marshal(k)
+			out = append(out, js)
+		}
+		return out
+	}
+	tc.Left, tc.Right = enc(edit("left", l)), enc(edit("right", r))
+	b.Data, _ = json.Marshal(tc)
+	return b
+}
+
+func (b Block) RenewIDs(keep func(id string) bool) Block {
+	if b.Type != "two_column" {
+		return b
+	}
+	return b.WithChildren(func(_ string, kids []Block) []Block {
+		for i := range kids {
+			if !keep(kids[i].ID) {
+				kids[i].ID = NewID("b_")
+			}
+		}
+		return kids
+	})
+}
+
+func (b Block) DiagramSources() []string {
+	if src, _, ok := b.DiagramSource(); ok {
+		return []string{src}
+	}
+	var out []string
+	for _, k := range b.Children() {
+		out = append(out, k.DiagramSources()...)
+	}
+	return out
 }
 
 type Empty struct{}

@@ -51,22 +51,38 @@ var sizeFrac = map[string]float64{"full": 1, "half": 0.5, "small": 0.35}
 func (b *Builder) docBlocks(ctx context.Context, dir string, th Theme, blocks []model.Block) ([]map[string]any, []string, error) {
 	out := make([]map[string]any, len(blocks))
 	var warns []string
+	var walk func(m map[string]any) error
+	walk = func(m map[string]any) error {
+		for _, side := range []string{"left", "right"} {
+			if kids, ok := m[side].([]map[string]any); ok {
+				for _, k := range kids {
+					if err := walk(k); err != nil {
+						return err
+					}
+				}
+			}
+		}
+		if m["type"] != "diagram" {
+			return nil
+		}
+		id := m["id"].(string)
+		path, svg, err := diagram.Cached(ctx, filepath.Join(dir, "diagrams"), m["source"].(string), th.D2)
+		if err != nil {
+			return fmt.Errorf("diagram %s: %w", id, err)
+		}
+		w, h, pt := Fit(svg, m["size"].(string))
+		m["svg"] = "diagrams/" + filepath.Base(path)
+		m["width_mm"] = w
+		m["height_mm"] = h
+		if pt < minReadablePt {
+			warns = append(warns, fmt.Sprintf("diagram %s is scaled down so its labels render at ~%.1fpt (unreadable below %.0fpt); simplify it, split it in two, change direction, or use size \"full\"", id, pt, minReadablePt))
+		}
+		return nil
+	}
 	for i, bl := range blocks {
 		out[i] = bl.Doc()
-		src, size, ok := bl.DiagramSource()
-		if !ok {
-			continue
-		}
-		path, svg, err := diagram.Cached(ctx, dir+"/diagrams", src, th.D2)
-		if err != nil {
-			return nil, nil, fmt.Errorf("diagram %s: %w", bl.ID, err)
-		}
-		w, h, pt := Fit(svg, size)
-		out[i]["svg"] = "diagrams/" + path[strings.LastIndex(path, "/")+1:]
-		out[i]["width_mm"] = w
-		out[i]["height_mm"] = h
-		if pt < minReadablePt {
-			warns = append(warns, fmt.Sprintf("diagram %s is scaled down so its labels render at ~%.1fpt (unreadable below %.0fpt); simplify it, split it in two, change direction, or use size \"full\"", bl.ID, pt, minReadablePt))
+		if err := walk(out[i]); err != nil {
+			return nil, nil, err
 		}
 	}
 	return out, warns, nil

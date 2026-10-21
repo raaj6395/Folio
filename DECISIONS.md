@@ -104,3 +104,9 @@
 - **Why:** Spec 6.3. The kitchen-sink check found a tall diagram's caption stranded on the next page.
 - **Alternatives considered:** keeping the current paper on theme switch (a notebook theme on plain paper loses the point).
 - **Affects interface/behaviour?** yes, minor (set_theme default paper) — **User approved?** n.a.
+
+## 2026-10-22 — two_column nesting
+- **Decision:** Nested blocks are stored inside the parent's `data` (`left`/`right` hold full flat blocks with their own `b_` IDs). `update_block`, `delete_blocks` and `read_blocks` accept nested IDs. `insert_blocks`/`move_blocks` refer only to top-level blocks, and using a nested ID there returns an error naming the parent. Updating a two_column keeps nested IDs it already had and gives new ones to everything else. Append/insert always assign fresh nested IDs (so copying a block can't duplicate IDs). Deleting the last block of a column is refused. The outline lists nested blocks right after their parent, with `parent` set. A two_column stays whole unless it is taller than 90% of a page (other no-split blocks use 40%), because splitting a grid sends one column's tail to the next page.
+- **Why:** Spec 5.3 says nested blocks are directly addressable. The kitchen-sink check showed a split right column.
+- **Alternatives considered:** a `parent_id` column in the blocks table (the nested order and positions would need their own keys, for little gain).
+- **Affects interface/behaviour?** yes (insert/move don't take nested IDs) — **User approved?** no — flagged in PROGRESS.
