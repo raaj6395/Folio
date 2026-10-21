@@ -105,6 +105,12 @@ Legend: [ ] todo · [~] in progress · [x] done · [!] blocked
 | 2026-10-22 | dotgrid | Good (checked by Claude) | none |
 
 ## Session log
+### 2026-10-22 — Session 1 (cloud only)
+- User decision: run Folio only on Render from now on; keep the code paths (SQLite/stdio) for tests and debugging.
+- Did: built `folio import` (Phase 2 D2.1, done early). Imported all 7 local notebooks into Render Postgres. Then removed the local setup: the `folio-http` Claude Code registration (stdio `folio` was already gone), the `folio` entry in the Claude desktop config (backup in the session scratchpad), the local Docker Postgres container and volume, `~/.folio`, and the scratch SQLite backup.
+- Verified: the live service lists all 7 notebooks with the same version, block count, page count, title, theme and mode as local, and today's TCP-vs-UDP edit ("1. Short Answer") is on Render. After cleanup, `claude mcp list` shows only `folio-render` (Connected) and live `/healthz` is ok (postgres).
+- Note: `.env` still holds the Render external DB URL for admin commands. `make test-pg` recreates the local Docker DB on demand (tests only).
+- Next: CLOUD_PHASE2_SPEC.md minus D2 (done): D1 remote export/stateless sessions/commit in healthz, D3 render.yaml + deploy doc, D4 password rotation + perf.
 ### 2026-10-22 — Session 1 (Render deploy)
 - Did: Dockerfile (Folio + Typst 0.15.1), `$PORT` support, `RENDER_EXTERNAL_URL` fallback for links. The user created Render Postgres + a Docker web service (first attempt used the native Go runtime and was recreated as Docker). Fixed the MCP 403 on Render (SDK localhost protection, now off only in public mode). No auth (user decision).
 - Verified: the container ran locally like Render (create/append/diagram/render/PDF). Live: `/healthz` ok (postgres); MCP initialize 200 after the fix; Claude Code `folio-render` session made `n_wh2y2onk` end to end (~27s); PDF, viewer (0.27s) and page PNG (1.9s) served.
