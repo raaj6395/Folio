@@ -160,6 +160,7 @@ func (s *Server) result(ctx context.Context, nb store.Notebook, bs []model.Block
 		return res
 	}
 	res.Layout = LayoutSummary{PageCount: r.PageCount, LastPageFill: r.LastPageFill, Blocks: []BlockPage{}}
+	res.Warnings = append(res.Warnings, r.Warnings...)
 	for _, id := range changed {
 		res.Layout.Blocks = append(res.Layout.Blocks, BlockPage{id, r.Page(id)})
 	}

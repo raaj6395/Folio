@@ -29,9 +29,12 @@ const (
 )
 
 type Pos struct {
-	ID   string  `json:"id"`
-	Page int     `json:"page"`
-	YMM  float64 `json:"y_mm"`
+	ID      string  `json:"id"`
+	Type    string  `json:"type"`
+	Page    int     `json:"page"`
+	YMM     float64 `json:"y_mm"`
+	EndPage int     `json:"end_page"`
+	EndYMM  float64 `json:"end_y_mm"`
 }
 
 type Result struct {
@@ -40,6 +43,8 @@ type Result struct {
 	PageCount    int           `json:"page_count"`
 	Blocks       []Pos         `json:"blocks"`
 	LastPageFill float64       `json:"last_page_fill_pct"`
+	PageFill     []float64     `json:"page_fill_pct"`
+	Warnings     []string      `json:"warnings"`
 	Elapsed      time.Duration `json:"-"`
 }
 
@@ -160,41 +165,23 @@ func (b *Builder) build(ctx context.Context, nb store.Notebook, blocks []model.B
 	}()
 	go func() {
 		defer wg.Done()
-		raw, qErr = b.typst(ctx, dir, "eval", `query(<blockpos>).map(it => (id: it.value.id, page: it.location().page(), y: it.location().position().y / 1pt))`, "--in", "main.typ")
+		raw, qErr = b.typst(ctx, dir, "eval", `query(<blockpos>).map(it => (id: it.value.id, k: it.value.k, page: it.location().page(), y: it.location().position().y / 1pt))`, "--in", "main.typ")
 	}()
 	wg.Wait()
 	if err := errors.Join(pdfErr, qErr); err != nil {
 		return nil, err
 	}
-	var marks []struct {
-		ID   string  `json:"id"`
-		Page int     `json:"page"`
-		Y    float64 `json:"y"`
-	}
+	var marks []mark
 	if err := json.Unmarshal(raw, &marks); err != nil {
 		return nil, fmt.Errorf("parsing typst layout output: %w", err)
 	}
-	r := &Result{Key: key(nb), PDF: filepath.Join(dir, "out.pdf"), Blocks: []Pos{}}
-	for _, m := range marks {
-		mm := m.Y * 25.4 / 72
-		if m.ID == "_end" {
-			r.PageCount = m.Page
-			r.LastPageFill = clampPct((mm - marginTopMM) / contentHeightMM * 100)
-			continue
-		}
-		r.Blocks = append(r.Blocks, Pos{ID: m.ID, Page: m.Page, YMM: round1(mm)})
-	}
+	r := analyze(marks, blocks)
+	r.Key, r.PDF = key(nb), filepath.Join(dir, "out.pdf")
 	r.Elapsed = time.Since(start)
 	js, _ = json.Marshal(r)
 	os.WriteFile(cachePath, js, 0o644)
 	slog.Info("built notebook", "id", nb.ID, "version", nb.Version, "pages", r.PageCount, "ms", r.Elapsed.Milliseconds())
 	return r, nil
-}
-
-func round1(f float64) float64 { return float64(int(f*10+0.5)) / 10 }
-
-func clampPct(f float64) float64 {
-	return round1(min(100, max(0, f)))
 }
 
 func docBlocks(blocks []model.Block) []map[string]any {

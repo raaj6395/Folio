@@ -46,7 +46,8 @@
   }))
 }
 
-#let mark(id) = [#metadata((id: id))<blockpos>]
+#let mark(id) = [#metadata((id: id, k: "s"))<blockpos>]
+#let endmark(id) = [#metadata((id: id, k: "e"))<blockpos>]
 
 #let caption(xs) = if xs.len() > 0 {
   align(center, text(size: 0.85em, fill: t.muted, spans(xs)))
@@ -59,11 +60,12 @@
     block(sticky: true, above: above, below: 0.7em, {
       mark(b.id)
       heading(level: b.level, spans(b.text))
+      endmark(b.id)
     })
   } else if ty == "paragraph" {
-    block(width: 100%, { mark(b.id); spans(b.text) })
+    block(width: 100%, { mark(b.id); spans(b.text); endmark(b.id) })
   } else if ty == "bullets" or ty == "numbered" {
-    block(width: 100%, { mark(b.id); items(b.items, ty == "numbered") })
+    block(width: 100%, { mark(b.id); items(b.items, ty == "numbered"); endmark(b.id) })
   } else if ty == "callout" {
     let cv = t.callout.at(b.variant)
     block(
@@ -83,6 +85,7 @@
           if i > 0 { parbreak() }
           spans(p)
         }
+        endmark(b.id)
       },
     )
   } else if ty == "code" {
@@ -91,11 +94,13 @@
       block(width: 100%, fill: t.code-bg, radius: 3pt, inset: 8pt,
         raw(b.code, lang: if b.language == "" { none } else { b.language }, block: true))
       caption(b.caption)
+      endmark(b.id)
     })
   } else if ty == "divider" {
-    block(width: 100%, above: 1em, below: 1em, { mark(b.id); line(length: 100%, stroke: 0.6pt + t.rule) })
+    block(width: 100%, above: 1em, below: 1em, { mark(b.id); line(length: 100%, stroke: 0.6pt + t.rule); endmark(b.id) })
   } else if ty == "page_break" {
     mark(b.id)
+    endmark(b.id)
     pagebreak(weak: true)
   }
 }

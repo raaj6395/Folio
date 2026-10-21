@@ -85,6 +85,14 @@ type exportIn struct {
 	Path       string `json:"path,omitempty" jsonschema:"Absolute output path ending in .pdf; default ~/.folio/exports/<slug>-<date>.pdf"`
 }
 
+type LayoutInfo struct {
+	Version   int          `json:"version"`
+	PageCount int          `json:"page_count"`
+	PageFill  []float64    `json:"page_fill_pct"`
+	Blocks    []layout.Pos `json:"blocks"`
+	Warnings  []string     `json:"warnings"`
+}
+
 type ExportOut struct {
 	Path string `json:"path"`
 }
@@ -161,6 +169,19 @@ func (s *Server) register(m *mcp.Server) {
 				out.Blocks = append(out.Blocks, OutlineEntry{ID: b.ID, Type: b.Type, Page: r.Page(b.ID), Summary: b.Summary()})
 			}
 			return nil, out, nil
+		})
+
+	addTool(m, "get_layout_info", "Where every block landed (page, y position and end position in mm from the page top), how full each page is, and layout warnings. Cheaper than rendering images.",
+		func(ctx context.Context, _ *mcp.CallToolRequest, in notebookIn) (*mcp.CallToolResult, LayoutInfo, error) {
+			nb, bs, err := s.load(in.NotebookID)
+			if err != nil {
+				return nil, LayoutInfo{}, err
+			}
+			r, err := s.lb.Build(ctx, nb, bs)
+			if err != nil {
+				return nil, LayoutInfo{}, err
+			}
+			return nil, LayoutInfo{Version: nb.Version, PageCount: r.PageCount, PageFill: r.PageFill, Blocks: r.Blocks, Warnings: r.Warnings}, nil
 		})
 
 	addTool(m, "render_pages", "Render pages to PNG images so you can see how they look. Use after writing to check layout; fix what looks wrong.",
