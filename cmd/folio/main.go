@@ -150,7 +150,7 @@ func main() {
 		}
 		st, lb := open()
 		defer st.Close()
-		srv := &http.Server{Addr: addr, Handler: httpserver.Handler(st, lb, home(), public)}
+		srv := &http.Server{Addr: addr, Handler: httpserver.Handler(st, lb, home(), public, !httpserver.IsLoopback(addr))}
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 		go func() {

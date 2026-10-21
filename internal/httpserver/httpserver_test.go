@@ -48,7 +48,7 @@ func run(t *testing.T, st *store.Store) {
 	srv := httptest.NewUnstartedServer(nil)
 	srv.Start()
 	defer srv.Close()
-	srv.Config.Handler = Handler(st, lb, home, srv.URL)
+	srv.Config.Handler = Handler(st, lb, home, srv.URL, false)
 
 	ctx := context.Background()
 	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "0"}, nil).Connect(ctx, &mcp.StreamableClientTransport{Endpoint: srv.URL + "/mcp"}, nil)
@@ -134,4 +134,34 @@ func get(t *testing.T, url string) string {
 		t.Fatalf("GET %s: %d %s", url, resp.StatusCode, b)
 	}
 	return string(b)
+}
+
+func TestPublicModeAcceptsForeignHost(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "folio.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	lb, _ := layout.New(t.TempDir())
+	body := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"x","version":"0"}}}`
+	for _, public := range []bool{false, true} {
+		srv := httptest.NewServer(Handler(st, lb, t.TempDir(), "", public))
+		req, _ := http.NewRequest("POST", srv.URL+"/mcp", strings.NewReader(body))
+		req.Host = "folio-1i2o.onrender.com"
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json, text/event-stream")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		srv.Close()
+		want := http.StatusForbidden
+		if public {
+			want = http.StatusOK
+		}
+		if resp.StatusCode != want {
+			t.Errorf("public=%v: status %d, want %d", public, resp.StatusCode, want)
+		}
+	}
 }

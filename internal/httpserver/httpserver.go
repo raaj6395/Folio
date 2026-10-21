@@ -13,10 +13,11 @@ import (
 	"github.com/raaj6395/folio/internal/viewer"
 )
 
-func Handler(st *store.Store, lb *layout.Builder, home, publicURL string) http.Handler {
+func Handler(st *store.Store, lb *layout.Builder, home, publicURL string, public bool) http.Handler {
 	srv := mcpserver.New(st, lb, home, publicURL)
 	mux := http.NewServeMux()
-	mux.Handle("/mcp", mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return srv }, nil))
+	opts := &mcp.StreamableHTTPOptions{DisableLocalhostProtection: public}
+	mux.Handle("/mcp", mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return srv }, opts))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		if err := st.Ping(); err != nil {
 			http.Error(w, "database unreachable: "+err.Error(), http.StatusServiceUnavailable)
