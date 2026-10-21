@@ -56,3 +56,21 @@
 - **Why:** Lets `folio mcp` and `folio serve` share the DB. Immediate transactions avoid read-to-write lock upgrade deadlocks.
 - **Alternatives considered:** a migration library (unneeded dependency).
 - **Affects interface/behaviour?** no — **User approved?** n.a.
+
+## 2026-10-21 — Links restricted to http, https and mailto
+- **Decision:** `[text](url)` becomes a link only when the URL starts with `http://`, `https://` or `mailto:`. Other schemes (e.g. `javascript:`, `file:`) render as plain text.
+- **Why:** The injection test showed a `javascript:` URL becoming a live PDF link. Notes never need other schemes.
+- **Alternatives considered:** rejecting the block with an error (too harsh for something harmless to drop).
+- **Affects interface/behaviour?** yes, minor — **User approved?** no — a security hardening; flagged in PROGRESS.
+
+## 2026-10-21 — Templates and fonts embedded in the binary
+- **Decision:** `templates/` and `fonts/` are embedded with `go:embed` (root package `folio`). Each build writes the templates into `~/.folio/build/<id>/`. Fonts go to `~/.folio/fonts/` (rewritten only if changed). Typst runs with `--root <build dir> --font-path ~/.folio/fonts`. System fonts stay enabled as a fallback for glyphs the bundled fonts lack (CJK, emoji).
+- **Why:** A single binary works from any directory.
+- **Alternatives considered:** locating `templates/` next to the binary (breaks when the binary moves).
+- **Affects interface/behaviour?** no — **User approved?** n.a.
+
+## 2026-10-21 — Build = parallel compile + eval
+- **Decision:** Each build runs `typst compile` (PDF) and `typst eval` (block positions) in parallel. Results are cached in `layout.json`, keyed by version, theme and paper.
+- **Why:** Typst has no single command that outputs both. Running them in parallel halves wall time.
+- **Alternatives considered:** sequential runs.
+- **Affects interface/behaviour?** no — **User approved?** n.a.

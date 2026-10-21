@@ -56,6 +56,7 @@ func TestParseInline(t *testing.T) {
 		{"unclosed **bold and `code and [link](x", []Span{{Text: "unclosed **bold and `code and [link](x"}}},
 		{"2 * 3 * 4", []Span{{Text: "2 "}, {Text: " 3 ", Italic: true}, {Text: " 4"}}},
 		{"****", []Span{{Text: "****"}}},
+		{"[x](javascript:alert(1)) [m](mailto:a@b.c)", []Span{{Text: "x) "}, {Text: "m", Link: "mailto:a@b.c"}}},
 		{"", []Span{}},
 	}
 	for _, c := range cases {

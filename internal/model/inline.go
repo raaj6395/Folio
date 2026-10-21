@@ -96,7 +96,9 @@ func parseInline(s string, st Span, out *[]Span) {
 				if k := strings.IndexByte(rest[j+2:], ')'); k > 0 {
 					flush()
 					c := st
-					c.Link = rest[j+2 : j+2+k]
+					if u := rest[j+2 : j+2+k]; safeURL(u) {
+						c.Link = u
+					}
 					parseInline(rest[1:j], c, out)
 					i += j + 3 + k
 					continue
@@ -107,4 +109,9 @@ func parseInline(s string, st Span, out *[]Span) {
 		i++
 	}
 	flush()
+}
+
+func safeURL(u string) bool {
+	l := strings.ToLower(u)
+	return strings.HasPrefix(l, "http://") || strings.HasPrefix(l, "https://") || strings.HasPrefix(l, "mailto:")
 }
