@@ -9,11 +9,15 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/raaj6395/folio/internal/doctor"
+	"github.com/raaj6395/folio/internal/httpserver"
 	"github.com/raaj6395/folio/internal/layout"
 	"github.com/raaj6395/folio/internal/mcpserver"
 	"github.com/raaj6395/folio/internal/store"
@@ -25,6 +29,7 @@ const usage = `usage: folio <command>
 commands:
   mcp                         run the MCP server over stdio
   serve [--port 7420]         run the local web viewer
+  http [--unsafe-public]      serve MCP over HTTP (/mcp) plus the viewer; address from FOLIO_HTTP_ADDR
   export <notebook-id> [-o file.pdf]
   doctor                      check the environment
 `
@@ -99,7 +104,7 @@ func main() {
 		}
 		st, lb := open()
 		defer st.Close()
-		if err := mcpserver.New(st, lb, home()).Run(context.Background(), &mcp.StdioTransport{}); err != nil {
+		if err := mcpserver.New(st, lb, home(), "").Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 			fatal(err)
 		}
 	case "serve":
@@ -115,6 +120,44 @@ func main() {
 		if err := http.ListenAndServe(addr, viewer.New(st, lb)); err != nil {
 			fatal(err)
 		}
+	case "http":
+		setupLog(true)
+		fs := flag.NewFlagSet("http", flag.ExitOnError)
+		unsafe := fs.Bool("unsafe-public", false, "allow a non-loopback listen address (there is NO authentication yet)")
+		fs.Parse(os.Args[2:])
+		addr := os.Getenv("FOLIO_HTTP_ADDR")
+		if addr == "" {
+			addr = "127.0.0.1:8080"
+		}
+		if !httpserver.IsLoopback(addr) {
+			if !*unsafe {
+				fatal(fmt.Errorf("refusing to listen on %s: Folio has no authentication yet, so only loopback addresses (127.0.0.1, ::1, localhost) are allowed; pass --unsafe-public to override", addr))
+			}
+			fmt.Fprintf(os.Stderr, "WARNING: listening on %s with NO authentication. Anyone who can reach this address can read and change every notebook.\n", addr)
+		}
+		public := os.Getenv("FOLIO_PUBLIC_URL")
+		if public == "" {
+			public = "http://" + addr
+		}
+		if _, err := doctor.TypstVersion(); err != nil {
+			fatal(err)
+		}
+		st, lb := open()
+		defer st.Close()
+		srv := &http.Server{Addr: addr, Handler: httpserver.Handler(st, lb, home(), public)}
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		go func() {
+			<-ctx.Done()
+			shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			srv.Shutdown(shutdown)
+		}()
+		fmt.Fprintf(os.Stderr, "Folio HTTP on %s (MCP: %s/mcp, viewer: %s/, storage: %s)\n", addr, public, public, describeDSN(dsn()))
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			fatal(err)
+		}
+		slog.Info("folio http stopped")
 	case "export":
 		setupLog(false)
 		fs := flag.NewFlagSet("export", flag.ExitOnError)

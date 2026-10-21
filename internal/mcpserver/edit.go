@@ -328,4 +328,3 @@ func (s *Server) registerEdit(m *mcp.Server) {
 			return nil, s.result(ctx, nb, bs, nil), nil
 		})
 }
-

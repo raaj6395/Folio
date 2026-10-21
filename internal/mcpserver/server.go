@@ -35,9 +35,10 @@ var guide string
 var papers = []string{"plain", "ruled", "dotted", "grid"}
 
 type Server struct {
-	st   *store.Store
-	lb   *layout.Builder
-	home string
+	st        *store.Store
+	lb        *layout.Builder
+	home      string
+	publicURL string
 }
 
 const blockDescription = `One block. Set "type" plus that type's fields:
@@ -110,8 +111,8 @@ func friendly(err error) error {
 	return err
 }
 
-func New(st *store.Store, lb *layout.Builder, home string) *mcp.Server {
-	srv := &Server{st: st, lb: lb, home: home}
+func New(st *store.Store, lb *layout.Builder, home, publicURL string) *mcp.Server {
+	srv := &Server{st: st, lb: lb, home: home, publicURL: strings.TrimSuffix(publicURL, "/")}
 	s := mcp.NewServer(&mcp.Implementation{Name: "folio", Version: "0.1.0"}, &mcp.ServerOptions{Instructions: instructions})
 	srv.register(s)
 	srv.registerEdit(s)

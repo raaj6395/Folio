@@ -34,7 +34,7 @@ func newClient(t *testing.T) *client {
 	}
 	ctx := context.Background()
 	stp, ctp := mcp.NewInMemoryTransports()
-	if _, err := New(st, lb, home).Connect(ctx, stp, nil); err != nil {
+	if _, err := New(st, lb, home, "").Connect(ctx, stp, nil); err != nil {
 		t.Fatal(err)
 	}
 	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "0"}, nil).Connect(ctx, ctp, nil)

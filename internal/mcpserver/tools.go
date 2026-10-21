@@ -128,6 +128,7 @@ type ViewerOut struct {
 
 type ExportOut struct {
 	Path string `json:"path"`
+	URL  string `json:"url,omitempty"`
 }
 
 func (s *Server) register(m *mcp.Server) {
@@ -291,7 +292,11 @@ func (s *Server) register(m *mcp.Server) {
 				return nil, ExportOut{}, err
 			}
 			path, err := s.Export(ctx, nb, bs, in.Path)
-			return nil, ExportOut{path}, err
+			out := ExportOut{Path: path}
+			if s.publicURL != "" {
+				out.URL = s.publicURL + "/n/" + nb.ID + "/pdf"
+			}
+			return nil, out, err
 		})
 
 	addTool(m, "list_themes", "List available themes and paper backgrounds.",
@@ -330,6 +335,9 @@ func (s *Server) register(m *mcp.Server) {
 		func(ctx context.Context, _ *mcp.CallToolRequest, in notebookIn) (*mcp.CallToolResult, ViewerOut, error) {
 			if _, err := s.st.Notebook(in.NotebookID); err != nil {
 				return nil, ViewerOut{}, err
+			}
+			if s.publicURL != "" {
+				return nil, ViewerOut{URL: s.publicURL + "/n/" + in.NotebookID, Running: true}, nil
 			}
 			out := ViewerOut{URL: fmt.Sprintf("http://localhost:%d/n/%s", viewer.DefaultPort, in.NotebookID), Running: viewer.Running(viewer.DefaultPort)}
 			if !out.Running {
