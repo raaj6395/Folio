@@ -35,4 +35,11 @@ func TestWarnings(t *testing.T) {
 			t.Errorf("missing warning %q in:\n%s", w, got)
 		}
 	}
+
+	bs = []model.Block{{ID: "a", Type: "paragraph"}, {ID: "pb", Type: "page_break"}, {ID: "z", Type: "paragraph"}}
+	marks = []mark{{"a", "s", 1, pt(20)}, {"a", "e", 1, pt(60)}, {"pb", "s", 1, pt(60)}, {"pb", "e", 1, pt(60)}, {"z", "s", 2, pt(20)}, {"z", "e", 2, pt(30)}, {"_end", "s", 2, pt(30)}}
+	r = analyze(marks, bs)
+	if len(r.Warnings) != 1 || !strings.Contains(r.Warnings[0], "page 1 is only 16% full because page_break pb ends it") {
+		t.Fatalf("page_break warning: %v", r.Warnings)
+	}
 }

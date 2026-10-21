@@ -93,6 +93,9 @@ func warnings(r *Result) []string {
 			}
 		}
 		if lastOnPage >= 0 && bs[lastOnPage].Type == "page_break" {
+			if fill < 30 {
+				ws = append(ws, fmt.Sprintf("page %d is only %.0f%% full because page_break %s ends it; consider deleting that page_break", pg, fill, bs[lastOnPage].ID))
+			}
 			continue
 		}
 		if fill < 5 {

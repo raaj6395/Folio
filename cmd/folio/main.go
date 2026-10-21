@@ -86,7 +86,7 @@ func main() {
 			fatal(err)
 		}
 	case "export":
-		setupLog(true)
+		setupLog(false)
 		fs := flag.NewFlagSet("export", flag.ExitOnError)
 		out := fs.String("o", "", "output PDF path")
 		if len(os.Args) < 3 {

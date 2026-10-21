@@ -89,8 +89,8 @@ func TestPageFillAndEnds(t *testing.T) {
 	if p.Page != 2 || p.EndPage != 2 || p.EndYMM <= p.YMM {
 		t.Fatalf("heading extent: %+v", p)
 	}
-	if len(r.Warnings) != 0 {
-		t.Fatalf("explicit page break should not warn: %v", r.Warnings)
+	if len(r.Warnings) != 1 || !strings.Contains(r.Warnings[0], "because page_break "+bs[1].ID) {
+		t.Fatalf("want only the page_break warning, got %v", r.Warnings)
 	}
 }
 
