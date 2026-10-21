@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -31,6 +32,7 @@ commands:
   serve [--port 7420]         run the local web viewer
   http [--unsafe-public]      serve MCP over HTTP (/mcp) plus the viewer; address from FOLIO_HTTP_ADDR
   export <notebook-id> [-o file.pdf]
+  import [--from file.db] [--dry-run] [--include-deleted]   copy notebooks from a SQLite file into FOLIO_DB_URL
   doctor                      check the environment
 `
 
@@ -164,6 +166,39 @@ func main() {
 			fatal(err)
 		}
 		slog.Info("folio http stopped")
+	case "import":
+		setupLog(true)
+		fs := flag.NewFlagSet("import", flag.ExitOnError)
+		from := fs.String("from", filepath.Join(home(), "folio.db"), "SQLite file to import from")
+		dry := fs.Bool("dry-run", false, "only list what would be imported")
+		deleted := fs.Bool("include-deleted", false, "also import soft-deleted notebooks")
+		fs.Parse(os.Args[2:])
+		if _, err := os.Stat(*from); err != nil {
+			fatal(fmt.Errorf("source %s: %w", *from, err))
+		}
+		src, err := store.Open(*from)
+		if err != nil {
+			fatal(err)
+		}
+		defer src.Close()
+		dst, err := store.Open(dsn())
+		if err != nil {
+			fatal(err)
+		}
+		defer dst.Close()
+		fmt.Printf("importing from sqlite %s into %s%s\n", *from, describeDSN(dsn()), map[bool]string{true: " (dry run)"}[*dry])
+		res, err := dst.ImportFrom(src, *deleted, *dry)
+		failed := false
+		for _, r := range res {
+			fmt.Printf("  %-12s %-20s %s\n", r.ID, r.Status, r.Title)
+			failed = failed || strings.HasPrefix(r.Status, "failed")
+		}
+		if err != nil {
+			fatal(err)
+		}
+		if failed {
+			os.Exit(1)
+		}
 	case "export":
 		setupLog(false)
 		fs := flag.NewFlagSet("export", flag.ExitOnError)
