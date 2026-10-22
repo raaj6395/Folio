@@ -1,6 +1,6 @@
 # Layout guidelines & linting: progress
 
-Plan: [LAYOUT_GUIDELINES_PLAN.md](../LAYOUT_GUIDELINES_PLAN.md) (task IDs from Section 8).
+Built from the "Built-in layout guidelines and layout linting" spec. The plan file was removed once implemented; the task IDs below come from it.
 Decisions (Section 9), taken as the plan's picks:
 - Existing notebooks stay on `legacy` density.
 - Tables are left-aligned in all notebooks.

@@ -2,418 +2,334 @@
 
 ### Ask Claude for notes. Get a real notebook.
 
-> *"Make 2 pages of revision notes on REST APIs, with a diagram of the request lifecycle."*
->
-> …and a few seconds later there are two properly typeset A4 pages: headings, definition boxes, a comparison table, a diagram, and Q&A cards with the answers printed **upside down at the bottom of the page**, like a real revision book.
+> *"Make revision notes on REST vs gRPC with a diagram, a comparison table and a recall question."*
 
-Folio is a tool server for Claude (it speaks [MCP](https://modelcontextprotocol.io)). **Claude is the author; Folio is the typesetter.** Claude writes structured content. Folio lays it out on A4 pages, renders the diagrams, keeps headings with their text, avoids splitting boxes across pages, and then **shows Claude its own pages** so Claude can spot and fix layout problems itself.
+A few seconds later you have **properly typeset A4 pages**: clean headings, a diagram next to its explanation, comparison tables, definition boxes, and Q&A cards with the answer printed **upside down at the bottom of the page**, like a real revision book. You can watch every page appear live, edit by just asking, and download a print-ready PDF.
+
+Folio plugs into **Claude** (the app on web, desktop and phone, or Claude Code) as a connector. **Claude is the author; Folio is the typesetter.**
+
+![The Folio viewer: a contents sidebar on the left, live typeset pages on the right](docs/screenshots/viewer.png)
+
+---
+
+## Why Folio
+
+|  |  |
+|---|---|
+| 📄 **Real pages, not chat text** | Notes come out as typeset A4 pages, ready to print, annotate on an iPad, or study from. |
+| 🧠 **Built for studying** | Definition and key-point boxes, comparison tables, diagrams, self-test Q&A cards and fill-in blanks with real ruled lines. |
+| 📐 **Layout that checks itself** | Folio measures every page and tells Claude what's wrong (cramped spacing, half-empty pages, oversized diagrams) along with how to fix it, so you don't have to send corrections. |
+| 👀 **Watch it being written** | A live viewer updates each page the moment Claude changes it. |
+| ↩️ **Nothing is ever lost** | Every change is a version. "Undo that" or "go back to version 4" just works. |
+| 🔐 **Private by default** | Each account sees only its own notebooks. Claude signs in with one click (OAuth), and you can disconnect it any time. |
+
+---
+
+## What it looks like
+
+### Three themes, dark or light
 
 | clean | notebook | dotgrid |
 |---|---|---|
-| ![clean theme](docs/screenshots/clean.png) | ![notebook theme](docs/screenshots/notebook.png) | ![dotgrid theme](docs/screenshots/dotgrid.png) |
+| ![clean theme](docs/screenshots/clean.png) | ![notebook theme: handwritten font, ruled paper](docs/screenshots/notebook.png) | ![dotgrid theme](docs/screenshots/dotgrid.png) |
 
-<sub>Three themes, each in **dark** (the default) and **light** mode. Screenshots are light mode.</sub>
+**clean** is crisp and typeset. **notebook** is handwritten, with a red margin line and sketch-style diagrams. **dotgrid** is bullet-journal style. Every theme comes in **dark** (the default) and **light** (for printing), on plain, ruled, dotted or grid paper.
 
----
+### Pages that breathe
 
-## Contents
+Folio adds space before headings and around tables, diagrams and boxes for you. Choose the feel: **compact**, **comfortable** (the default) or **airy**.
 
-1. [What it feels like](#-what-it-feels-like)
-2. [What Claude can put on a page](#-what-claude-can-put-on-a-page)
-3. [Themes, paper and dark mode](#-themes-paper-and-dark-mode)
-4. [How it works](#-how-it-works)
-5. [Deploy your own (Render)](#-deploy-your-own-render)
-6. [Connect Claude](#-connect-claude)
-7. [The live viewer](#-the-live-viewer)
-8. [Configuration](#-configuration)
-9. [Developing Folio](#-developing-folio)
-10. [Project layout](#-project-layout)
-11. [Roadmap](#-roadmap)
-12. [FAQ and troubleshooting](#-faq-and-troubleshooting)
-
----
-
-## ✨ What it feels like
-
-A typical session, in your own words:
-
-1. **"Make notes on Kafka basics, about 3 pages, dotgrid theme."**
-   Claude reads Folio's authoring guide, plans an outline and writes it section by section. After each write, Folio reports **which page every block landed on, how full each page is, and any layout problems** ("this diagram's labels are too small to read", "page 2 is only 14% full").
-2. **Claude checks its work.** It renders a page, looks at the image, and fixes what looks wrong: shortening a table, changing a diagram's direction, moving a block.
-3. **You watch it happen.** Open the viewer link Claude gives you, and pages appear and flash as they change.
-4. **You keep editing in plain language.**
-   - *"Add a comparison table of HTTP methods after the methods section."*
-   - *"Page 3 looks cramped, fix it."*
-   - *"Change the first heading to 'Short Answer'."*
-   - *"Switch it to light mode, I want to print it."*
-5. **Undo is built in.** Every change is a version. *"Undo that"* steps back, and *"restore version 4"* jumps back further.
-6. **Export:** a PDF you can print, read on an iPad, or write on (the fill-in blanks have real ruled lines).
-
-<details>
-<summary><b>More prompts to try</b></summary>
-
-- "Make a cheat sheet for consistent hashing with blanks I can fill in."
-- "Turn what we discussed in this session into notes, with a Q&A card at the end of each section."
-- "Make interview notes on TCP vs UDP: a short answer first, then a comparison table, then 3 self-test questions."
-- "Explain the TCP three-way handshake with a sequence diagram."
-- "Put the pros and cons of SQL vs NoSQL side by side in two columns."
-- "Make the Kafka notes use the notebook theme on ruled paper."
-
-</details>
-
----
-
-## 🧱 What Claude can put on a page
-
-Claude never thinks in coordinates. It writes **blocks**, and every block has a stable ID (`b_7f2a…`), so later edits are small and targeted instead of rewriting the whole document.
-
-| Block | What it's for | How Folio treats it |
+| Tight spacing (older notebooks) | Comfortable (the default) | Comfortable, dark |
 |---|---|---|
-| **heading** (H1–H3) | Section titles | Never left alone at the bottom of a page |
-| **paragraph** | Explanations | Flows freely across pages |
-| **bullets / numbered** | Lists, nested up to 3 levels | Short lists stay on one page |
-| **callout** | `note`, `tip`, `warning`, `definition`, `key_point` | Tinted box with an accent colour; doesn't split if it fits |
-| **code** | Snippets with syntax highlighting | Splits only when longer than ~40% of a page |
-| **table** | Comparisons (2–6 columns) | Long tables split and **repeat the header row** |
-| **diagram** | Flows, architectures, sequence diagrams, written in [D2](https://d2lang.com) | Laid out automatically, sized to stay readable, never split |
-| **qa** | Self-test cards | The answer can be printed **upside down at the page bottom** |
-| **fill_in** | "Explain X in your own words" | Prompt plus ruled lines to write on |
-| **two_column** | Side-by-side content (pros/cons, before/after) | Columns stay together |
-| **divider / spacer / page_break** | Rhythm and structure | Folio warns when a page break wastes a page |
+| ![Tight spacing](docs/screenshots/layout-guidelines/rest-vs-grpc-legacy-light.png) | ![Comfortable spacing](docs/screenshots/layout-guidelines/rest-vs-grpc-comfortable-light.png) | ![Comfortable spacing in dark mode](docs/screenshots/layout-guidelines/rest-vs-grpc-comfortable-dark.png) |
 
-Text inside blocks supports a small, safe set of inline styles: `**bold**`, `*italic*`, `` `code` ``, `[links](https://…)` and `==highlight==`.
+Notice the diagram sitting **next to** its steps instead of on top of them, the two tips **side by side**, and the tables with **text on the left and numbers on the right**. Folio's built-in layout rules teach Claude to arrange pages this way.
 
-<details>
-<summary><b>What a block looks like (the JSON Claude sends)</b></summary>
+### Your notebooks, at a glance
 
-```json
-{"type": "callout", "variant": "definition", "title": "Idempotent",
- "body": ["Doing it twice has the same effect as doing it once."]}
+![The dashboard: notebook cards with page previews](docs/screenshots/dashboard.png)
 
-{"type": "diagram", "size": "half", "caption": "Request path",
- "source": "direction: right\nclient -> api: HTTPS\napi -> db: SQL"}
-
-{"type": "qa", "question": "Why is PUT idempotent?",
- "answer": "It sets the resource to a given state; repeating it changes nothing.",
- "hide_answer": true}
-```
-
-Every block is validated before anything is saved. If one block in a batch of 10 is wrong, nothing is written, and Claude gets a precise error such as `block[3] (table): row 2 has 4 cells, expected 3 (columns: Method, Idempotent, Safe)`.
-
-</details>
+Every notebook shows a preview of its first page. New notebooks appear on their own while Claude writes, with no reloading. Search, sort, rename and delete, with **Undo** if you change your mind.
 
 ---
 
-## 🎨 Themes, paper and dark mode
+## ✨ Features
 
-| Theme | Look | Default paper |
-|---|---|---|
-| **clean** | Crisp and typeset: Inter + JetBrains Mono, left-accent callouts | plain |
-| **notebook** | Handwritten: Kalam font, red margin line, **hand-drawn (sketch) diagrams** | ruled |
-| **dotgrid** | Bullet-journal: clean fonts on a dot grid | dotted |
+### Everything a study page needs
 
-- **Paper:** `plain`, `ruled`, `dotted` or `grid`, in any theme.
-- **Dark mode is the default.** Ask for light mode and Claude switches it; only the look changes, not the content. Dark pages get dark-friendly code colours and dark diagrams.
-- **The viewer has its own toggle** (Auto / Dark / Light) that changes only how *you* see the pages, without touching the notebook.
+| Block | Use it for |
+|---|---|
+| **Headings** (3 levels) | Sections. A heading is never left alone at the bottom of a page. |
+| **Paragraphs** with **bold**, *italic*, `code`, links and ==highlights== | Explanations |
+| **Bullet and numbered lists** (3 levels deep) | Steps and enumerations |
+| **Callouts**: note, tip, warning, definition, key point | The things to remember, in tinted boxes |
+| **Tables** | Comparisons. Long tables repeat their header row on the next page. |
+| **Diagrams** | Flows, architectures and sequence diagrams, laid out automatically and kept readable |
+| **Two columns** | Diagram + explanation, pros + cons, steps + tip |
+| **Q&A cards** | Self-testing, with the answer optionally upside down at the page bottom |
+| **Fill-in blanks** | "Explain X in your own words", with ruled lines to write on |
+| **Code** | Syntax-highlighted snippets |
+| **Dividers, spacers, page breaks** | Rhythm and structure |
+
+Folio keeps boxes, tables, code and diagrams from splitting awkwardly across pages, and flows everything else naturally.
+
+### A layout assistant built in
+
+- **Rules every Claude session gets automatically:** each topic fits on its own page, related things go side by side, diagrams stay small and readable, and every section ends with recall questions.
+- **Feedback after every change:** Folio reports where each block landed, how full each page is, and concrete fixes such as *"page 2 is only 30% full before a page break: add content or arrange part of it in two columns"*.
+- **A layout score:** before finishing, Claude checks the whole notebook (0–100, page by page) and fixes what it finds.
+- **Your own style rules:** tell Claude *"always use British spelling and keep one idea per box"* and it can save that on the notebook. Every future session follows it.
+
+### A live viewer that's nice to read in
+
+- **Contents sidebar** built from your headings, with page numbers. Click to jump.
+- **Live status:** a green dot while connected; changed pages glow and offer "Jump to page".
+- **Follow live edits:** the view scrolls to whatever Claude is changing.
+- **Zoom**, a **page counter** you can type into, **full-size page preview**, and it **remembers where you were**.
+- **Keyboard shortcuts:**
+
+  | Key | Action |
+  |---|---|
+  | `j` / `k` | Next / previous page |
+  | `g` / `G` | First / last page |
+  | `+` / `-` | Zoom in / out |
+  | `o` | Show or hide contents |
+  | `t` | Switch appearance |
+  | `f` | Follow live edits |
+  | `d` | Download PDF |
+  | `?` | Show all shortcuts |
+- **Your appearance, your choice:** view any notebook in dark or light without changing the notebook itself.
+
+### Edit by asking
+
+- *"Add a comparison table of HTTP methods after the methods section."*
+- *"Page 3 looks cramped, fix it."*
+- *"Make the spacing airy."*
+- *"Switch it to light mode, I want to print it."*
+- *"Undo that."*, *"Go back to version 4."* (the last 200 versions are kept)
+
+### Private and simple to connect
+
+- **Accounts:** sign up with email and password. Your notebooks are visible only to you.
+- **One-click connect:** Claude signs in through Folio's own login page (OAuth), the same way it connects to Google Drive. There's no key to copy.
+- **Stay in control:** the **Connect Claude** page lists every connected app with a **Disconnect** button. Personal access tokens are available for scripts.
 
 ---
 
-## ⚙️ How it works
+## 🚀 Get started
 
-```
- You ──"make notes on DNS"──► Claude ──MCP tools──► Folio ──► Postgres (your notebooks)
-                                 ▲                    │
-                                 │                    ├─► D2   → diagrams (SVG)
-                                 │                    ├─► Typst → A4 pages (PDF / PNG)
-                                 └── page images, ────┘
-                                     layout report,
-                                     warnings
-```
+You need a Folio server. Run your own in about 10 minutes ([below](#-run-your-own-folio)), or use one someone shares with you. Then sign up on its website and connect Claude.
 
-1. **Blocks are the source of truth.** They live in Postgres (or SQLite for local development). PDFs and images are always regenerated from them.
-2. **One fixed Typst template** turns the blocks into pages. Your text reaches Typst only as data, never as code, so nothing in a note can break or hijack the layout. A test throws Typst syntax at it to prove this.
-3. **Folio measures where everything landed** and reports it back after every write, so Claude knows the page count, how full each page is, and what went wrong, without asking for images.
-4. **Diagrams** are written in D2 and laid out automatically. Their text uses the theme font, and Folio warns when a diagram would be too small to read.
-5. **Every change is a version** (the last 200 are kept). Writes can pass `expected_version`, so two editors never silently overwrite each other.
+### Claude app (web, desktop, phone)
+1. In Claude: **Settings → Connectors → Add custom connector**.
+2. Name: `Folio`. URL: `https://<your-folio-server>/mcp`.
+3. Keep the defaults (**Sign in now**, **Use Claude's published identity**) and click **Add**.
+4. Folio's page opens. Log in, check the app is from **claude.ai**, and click **Allow**. Done.
 
-**Speed:** rebuilding a 10-page notebook takes ~150ms and a 30-page one ~300ms (measured on an Apple M1). Unchanged notebooks come from cache in under a millisecond.
-
-<details>
-<summary><b>All MCP tools</b></summary>
-
-| Group | Tools |
-|---|---|
-| Notebooks | `list_notebooks`, `create_notebook`, `rename_notebook`, `delete_notebook`, `set_theme` (theme, mode, density), `list_themes` |
-| Preferences | `set_notebook_guidelines`, `get_notebook_guidelines` (the user's own layout/style rules, versioned with the notebook) |
-| Reading | `get_outline` (compact: ID, type, page, summary per block), `read_blocks`, `get_layout_info` |
-| Writing | `append_blocks`, `insert_blocks`, `update_block`, `delete_blocks`, `move_blocks` |
-| Seeing | `check_layout` (score 0–100 and every layout issue with a fix), `render_pages` (page images for Claude), `preview_diagram` |
-| History | `list_versions`, `undo`, `restore_version` |
-| Output | `export_pdf`, `get_viewer_url` |
-| Help | `get_authoring_guide` (also the resource `folio://guide`) |
-
-</details>
-
----
-
-## 🚀 Deploy your own (Render)
-
-Folio runs as a single Docker web service plus a Postgres database. The repo's `Dockerfile` builds Folio and installs Typst; fonts and templates are built into the binary.
-
-> 🔐 **Accounts built in.** Every notebook belongs to one account. People sign up on your site, create a personal token, and Claude only ever sees their own notebooks.
-
-**1. Create the database:** Render → **New → Postgres**. Pick a region (e.g. Oregon) and note the **Internal Database URL**.
-
-**2. Create the web service:** **New → Web Service** → connect this repo, then:
-
-| Setting | Value |
-|---|---|
-| Language / Runtime | **Docker** (not Go: the native Go runtime has no Typst) |
-| Region | **The same region as the database** |
-| Branch | `main` |
-| Health check path | `/healthz` |
-| Instance type | **Starter** recommended. Free sleeps when idle, and the first request then takes ~50s, long enough for Claude's tool calls to time out. |
-
-**3. Add one environment variable:**
-
-| Key | Value |
-|---|---|
-| `FOLIO_DB_URL` | the database's **Internal** URL |
-
-Render sets `PORT` itself, and Folio picks up its public address from Render automatically.
-
-**4. Check it:** open `https://<your-service>.onrender.com/healthz`. It should say `folio ok (postgres) commit …`. Then open the site itself and **sign up**.
-
-Every `git push` to `main` redeploys. Your notebooks are safe across deploys, because they live in Postgres.
-
-<details>
-<summary><b>Moving existing notebooks from a local SQLite file</b></summary>
-
+### Claude Code
 ```sh
-FOLIO_DB_URL='<External Database URL>?sslmode=require' bin/folio import --from ~/.folio/folio.db --dry-run
-FOLIO_DB_URL='<External Database URL>?sslmode=require' bin/folio import --from ~/.folio/folio.db
+claude mcp add -s user --transport http folio https://<your-folio-server>/mcp
 ```
+Then run `/mcp` in Claude Code, pick **folio**, choose **Authenticate**, and approve in the browser.
 
-The import keeps every notebook's ID, blocks and full version history, so undo still works. It skips notebooks that already exist, so running it twice is safe.
+### Prompts to try
+- *"Make 2 pages of revision notes on DNS with a diagram of a lookup."*
+- *"Make a cheat sheet for Big-O with a table of common data structures."*
+- *"Turn what we discussed into notes, with a Q&A card at the end of each section."*
+- *"Put the pros and cons of SQL vs NoSQL side by side."*
+- *"Explain the TCP handshake with a sequence diagram, then 3 self-test questions."*
+- *"Make the Kafka notes use the notebook theme on ruled paper."*
 
-</details>
+> 💡 **Printing?** Ask for **light mode** first. Dark pages look great on screen but use a lot of ink.
 
 ---
 
-## 🔌 Connect Claude
+## 🖥 Run your own Folio
 
-Folio signs Claude in with **OAuth**, just like connecting Google Drive or GitHub. There's no key to copy.
+Folio is a single Docker service plus a Postgres database. The repo's `Dockerfile` builds everything, including the Typst typesetter, fonts and templates.
 
-**Claude app (web, desktop, phone):**
-1. **Settings → Connectors → Add custom connector**
-2. Name: `Folio`. URL: `https://<your-service>.onrender.com/mcp`
-3. Keep **Sign in now** and **Use Claude's published identity** (the defaults), then click **Add**
-4. A Folio page opens: log in (or sign up), check that the app is from **claude.ai**, then click **Allow**
+**On Render:**
+1. **New → Postgres.** Note the **Internal Database URL**.
+2. **New → Web Service** from this repo:
+   - Runtime: **Docker**.
+   - Region: **the same region as the database**.
+   - Health check path: `/healthz`.
+3. Add the environment variable `FOLIO_DB_URL` = the Internal Database URL. Render sets the port and public address itself.
+4. Open `https://<your-service>/healthz`. It should say `folio ok (postgres) commit …`. Then open the site and **sign up**.
 
-**Claude Code:**
+Every push to `main` redeploys, and your notebooks stay safe in Postgres.
 
-```sh
-claude mcp add -s user --transport http folio https://<your-service>.onrender.com/mcp
-```
-
-Then run `/mcp` inside Claude Code, pick **folio** → **Authenticate**. Your browser opens Folio to approve.
-
-Every connected app is listed on the **Connect Claude** page (`/connect`) with a **Disconnect** button. Disconnecting stops it immediately. For scripts and tools that can't do OAuth, the same page has **personal access tokens** under *Advanced*. Send one as `Authorization: Bearer folio_pat_…`.
+> ⚠️ **About free tiers:**
+> - Folio typesets on the server, which needs real CPU. On Render's **Free** instance (0.1 CPU), writes take many seconds and long notebooks can time out. It also sleeps after 15 minutes idle and takes about a minute to wake. **Starter or Standard is recommended.**
+> - Render's free Postgres **expires after 30 days**.
+> - Measurements and a speed plan are in [PERFORMANCE_PLAN.md](PERFORMANCE_PLAN.md).
 
 <details>
-<summary><b>Tip: tell Claude when to use Folio (CLAUDE.md snippet)</b></summary>
-
-Add this to the `CLAUDE.md` of any project:
-
-```markdown
-## Notes with Folio
-When I ask for notes, a cheat sheet or a revision sheet, use the `folio` MCP tools:
-1. Call `get_authoring_guide` once per session.
-2. `create_notebook` (or `list_notebooks` / `get_outline` to continue one).
-3. Write section by section with `append_blocks`. Read the returned page fill, warnings and `layout_hints`, and fix issues with `update_block` / `insert_blocks` / `move_blocks`.
-4. Before finishing, run `check_layout`, fix what it reports, then `render_pages` once on the changed pages.
-5. End each section with `qa` or `fill_in` blocks for active recall.
-6. `export_pdf` and give me the link. Offer `get_viewer_url` if I want to watch live.
-```
-
-</details>
-
-<details>
-<summary><b>Tired of approving every tool call in Claude Code?</b></summary>
-
-Add an allow rule to `~/.claude/settings.json`:
-
-```json
-{ "permissions": { "allow": ["mcp__folio__*"] } }
-```
-
-Folio keeps every version, so even a deletion can be undone with `restore_version`.
-
-</details>
-
----
-
-## 👀 The live viewer
-
-The same service that Claude talks to also serves a viewer:
-
-- `/`: all notebooks
-- `/n/<id>`: pages as you'd see them in a PDF reader, updating **live** while Claude writes. Changed pages flash orange for a moment.
-- The toolbar shows the version, "updated 5s ago", the theme and mode, a **View: Auto / Dark / Light** switch, and **Download PDF**.
-
----
-
-## 🔧 Configuration
+<summary><b>Settings</b></summary>
 
 | Variable | Default | What it does |
 |---|---|---|
-| `FOLIO_DB_URL` | *(unset → SQLite in `FOLIO_HOME`)* | `postgres://…` or `postgresql://…` selects Postgres |
+| `FOLIO_DB_URL` | *(unset: SQLite in `FOLIO_HOME`)* | `postgres://…` selects Postgres |
 | `PORT` | — | Set by Render; Folio listens on `0.0.0.0:$PORT` |
-| `FOLIO_HTTP_ADDR` | `127.0.0.1:8080` | Listen address for `folio http` (overrides `PORT`) |
-| `FOLIO_PUBLIC_URL` | Render's `RENDER_EXTERNAL_URL`, else `http://` + listen address | Base for the PDF/viewer links that tools return |
-| `FOLIO_HOME` | `~/.folio` (`/tmp/folio` in Docker) | Render cache, logs, and the SQLite file in local mode |
-| `FOLIO_SIGNUP` | `open` | `closed` turns off public sign-up (create accounts with an admin process instead) |
-| `FOLIO_TEST_DB_URL` | — | Runs the test suite against Postgres too |
+| `FOLIO_HTTP_ADDR` | `127.0.0.1:8080` | Listen address (overrides `PORT`) |
+| `FOLIO_PUBLIC_URL` | Render's external URL | Base for links the tools return |
+| `FOLIO_HOME` | `~/.folio` (`/tmp/folio` in Docker) | Render cache and the local SQLite file |
+| `FOLIO_SIGNUP` | `open` | `closed` turns off public sign-up |
+
+</details>
 
 <details>
-<summary><b>All commands</b></summary>
+<summary><b>Admin commands</b></summary>
 
 | Command | What it does |
 |---|---|
-| `folio http [--no-auth]` | MCP at `/mcp` (token required), accounts, viewer and `/healthz`. `--no-auth` is for local development and only works on loopback addresses. |
-| `folio admin adopt --email <e>` | Give every notebook without an owner to that account |
-| `folio admin reset-password --email <e>` | Set and print a new random password (there's no email yet) |
-| `folio admin disable-user --email <e>` | Block that account's login and tokens |
-| `folio admin require-owners` | (Postgres) Make ownership mandatory once no orphans remain |
-| `folio import --from <file.db> [--owner <email>] [--dry-run] [--include-deleted]` | Copy notebooks from SQLite into `FOLIO_DB_URL` |
+| `folio http [--no-auth]` | The server: MCP at `/mcp`, accounts, viewer, `/healthz`. `--no-auth` is for local development on loopback only. |
+| `folio admin reset-password --email <e>` | Set and print a new password (there's no email sending yet) |
+| `folio admin disable-user --email <e>` | Block an account's login and tokens |
+| `folio admin adopt --email <e>` | Give notebooks without an owner to that account |
+| `folio import --from <file.db> [--owner <email>] [--dry-run]` | Copy notebooks, with full history, from SQLite into Postgres |
 | `folio export <notebook-id> [-o file.pdf]` | Export a PDF from the command line |
-| `folio doctor` | Checks Typst, fonts, data dir and the database (password masked) |
-| `folio mcp` | MCP over stdio, for local development |
-| `folio serve [--port 7420]` | Standalone local viewer, for local development |
+| `folio doctor` | Check Typst, fonts, data directory and database |
 
 </details>
 
 ---
 
-## 🛠 Developing Folio
-
-You need **Go 1.26+**, the **Typst CLI 0.15+** (`brew install typst`) and, for Postgres tests, **Docker**.
-
-```sh
-make build          # bin/folio
-make test           # whole suite on SQLite: model, store, layout, diagrams, MCP over stdio and HTTP, viewer
-make test-pg        # starts Postgres in Docker and runs the suite on both databases
-make kitchen-sink   # every block type × every theme × dark/light → build/kitchen-sink/*.pdf
-make lint
-```
-
-Run it locally against Docker Postgres: `cp .env.example .env`, then `make run-http`. The server is on `http://127.0.0.1:8080` with accounts on. Add `--no-auth` for quick local hacking without logging in (loopback only).
-
-Some tests use `pdftotext` (poppler) when it's installed, to prove that the page numbers Folio reports match the actual PDF.
+## ❓ FAQ
 
 <details>
-<summary><b>What the tests guard</b></summary>
+<summary><b>Is my data private?</b></summary>
 
-- **Injection safety:** Typst code inside notes renders as plain text, and `javascript:` links are neutralised.
-- **Layout truth:** every reported page number is checked against the real PDF text.
-- **Pagination:** headings never sit alone at the bottom of a page, boxes don't split, and diagrams keep their captions (checked across every page position).
-- **History:** undo, restore, version conflicts and snapshot pruning, on both SQLite and Postgres.
-- **Ordering:** block order is byte-order sorted on Postgres (`COLLATE "C"`). Otherwise some server locales would silently scramble your notes.
-- **Accounts:** an isolation matrix where user B attacks user A's notebook with **every** tool and viewer route and must always get "not found". The test fails if a new tool isn't covered, and it's proven to catch a removed ownership check. Also: tokens (missing/invalid/revoked), sessions, logout, CSRF, open redirects, identical errors for unknown emails, and tokens never appearing in logs.
-- **HTTP:** a full Claude-style session over MCP/HTTP, surviving server restarts (stateless MCP), the 403 fix for proxies like Render, and the loopback guard.
-- **Import:** keeps IDs and history, and running it twice changes nothing.
-
-</details>
-
----
-
-## 🗂 Project layout
-
-```
-cmd/folio/            the folio command (http, mcp, import, export, doctor, serve)
-internal/model/       block types, validation, inline-markdown parser, ordering keys
-internal/store/       SQLite + Postgres storage, versions/undo, import
-internal/layout/      doc.json → Typst → PDF/PNG, page positions, warnings, cache
-internal/diagram/     D2 → SVG with theme fonts, cache
-internal/mcpserver/   the MCP tools and the authoring guide Claude reads
-internal/httpserver/  HTTP: /mcp, /healthz, viewer
-internal/viewer/      live web viewer (SSE)
-templates/            the fixed Typst template and themes
-fonts/                bundled OFL fonts (Inter, JetBrains Mono, Kalam)
-Dockerfile            Folio + Typst image used on Render
-```
-
-The thinking behind the design lives in [`DECISIONS.md`](DECISIONS.md), with every pinned version and every trade-off. Build history and verification notes are in [`PROGRESS.md`](PROGRESS.md), and the original spec is [`docs/SPEC.md`](docs/SPEC.md).
-
----
-
-## 🧭 Roadmap
-
-- [x] Typeset notes, 14 block types, D2 diagrams, three themes, dark/light
-- [x] Layout feedback, page images for Claude, undo/versions
-- [x] Live viewer
-- [x] Postgres + MCP over HTTP, deployed on Render, SQLite import
-- [x] **Accounts:** sign up, log in, notebooks private to each user, personal access tokens to connect Claude ([plan](MULTIUSER_PLAN.md))
-- [x] **OAuth** so the Claude app's "Add custom connector" shows Folio's login page (CIMD + DCR, PKCE, refresh rotation)
-- [ ] Anki export from Q&A cards, iPad-friendly fill-in PDFs, note styles (Cornell, flashcards)
-
----
-
-## ❓ FAQ and troubleshooting
-
-<details>
-<summary><b>Claude's first tool call times out</b></summary>
-
-You're probably on Render's Free instance, which sleeps after inactivity. The first request wakes it (~50s). Retry, or move to the Starter instance.
+Yes. Every notebook belongs to one account, and every tool and page checks ownership. Another user who guesses a notebook ID just gets "not found". This is covered by an automated test that attacks every tool.
 
 </details>
 
 <details>
-<summary><b>The Claude app says "Couldn't reach the MCP server" or sign-in fails</b></summary>
+<summary><b>Claude's first request is slow or times out</b></summary>
 
-Check that the URL ends with `/mcp`, and that `https://<your-service>.onrender.com/.well-known/oauth-protected-resource/mcp` and `/.well-known/oauth-authorization-server` open in a browser. Claude caches these documents for about 5 minutes, so wait a few minutes after a redeploy. On the Free instance, the first request after idle can be slow, so retry once.
-
-</details>
-
-<details>
-<summary><b>Claude Code says it needs to authenticate</b></summary>
-
-Run `/mcp`, pick folio and choose **Authenticate**. If you use a personal token instead, it may have been revoked: create a new one under *Advanced* on the Connect page.
+The server was probably asleep (free hosting tiers sleep when idle) or is short on CPU. Retry once. For consistently fast responses, use a paid instance.
 
 </details>
 
 <details>
-<summary><b>The MCP connection fails, but <code>/healthz</code> works</b></summary>
+<summary><b>The Claude app says it couldn't reach the server, or sign-in fails</b></summary>
 
-Make sure the URL ends with `/mcp` and the header is included. Behind a proxy (like Render), Folio relaxes the MCP library's localhost protection automatically when it listens publicly; otherwise proxied requests would get 403.
+- Check that the URL ends with `/mcp`.
+- Check that `https://<server>/.well-known/oauth-authorization-server` opens in a browser.
+- After a redeploy, wait a few minutes: Claude caches the sign-in details for a short time.
+
+</details>
+
+<details>
+<summary><b>New features don't show up in Claude</b></summary>
+
+Start a **new chat**. Claude loads a connector's tools when a conversation starts. In Claude Code, run `/mcp` and choose **Reconnect**.
 
 </details>
 
 <details>
 <summary><b>I forgot my password</b></summary>
 
-There's no email yet, so the server admin runs `folio admin reset-password --email you@…` (against the production database URL) and passes on the new password.
+There's no email reset yet. The server admin runs `folio admin reset-password --email you@…` and passes on the new password.
 
 </details>
 
 <details>
-<summary><b>The Render build fails, or PDFs don't render</b></summary>
+<summary><b>Can Claude break the page layout with weird text?</b></summary>
 
-Check that the service's runtime is **Docker**. With the native Go runtime there's no Typst, and Render would try to build the wrong path.
-
-</details>
-
-<details>
-<summary><b>Why is block order a special case on Postgres?</b></summary>
-
-Folio orders blocks with short keys like `1`, `2`, `1i`, so inserting in the middle never renumbers anything. Those keys must sort byte by byte. Many Postgres servers sort text by language rules instead, which would quietly scramble notes, so the column is declared `COLLATE "C"` and a test checks it.
+No. Your text reaches the typesetter only as data, never as code, so nothing inside a note can change the layout or run anything. A test feeds it typesetting code to prove this.
 
 </details>
 
-<details>
-<summary><b>Can I print the notes?</b></summary>
+---
 
-Yes. Ask Claude to switch the notebook to **light mode** first. Dark pages look great on screen but use a lot of ink.
+## 🧭 Roadmap
+
+- [x] Typeset notes: 14 block types, diagrams, three themes, dark and light
+- [x] Live viewer, layout feedback, page images for Claude, undo and versions
+- [x] Accounts, private notebooks, one-click OAuth connect for the Claude app and Claude Code
+- [x] Redesigned dashboard and viewer: previews, contents sidebar, live updates, shortcuts
+- [x] Built-in layout rules, layout checks and score, spacing modes, per-notebook style rules
+- [ ] **Speed:** faster rendering and fewer round trips ([plan](PERFORMANCE_PLAN.md))
+- [ ] Version history panel in the viewer, with one-click restore
+- [ ] Read-only share links
+- [ ] Search inside notebooks; tags or folders
+- [ ] Install on your phone's home screen
+- [ ] Anki export from Q&A cards; Cornell and flashcard note styles
+
+---
+
+<details>
+<summary><b>🛠 For developers: how it works, tools, building and testing</b></summary>
+
+### How it works
+
+```
+ You ──"make notes on DNS"──► Claude ──MCP tools──► Folio ──► Postgres (your notebooks)
+                                 ▲                    │
+                                 │                    ├─► D2    → diagrams (SVG)
+                                 │                    ├─► Typst → A4 pages (PDF / PNG)
+                                 └── page images, ────┘
+                                     layout report, hints
+```
+
+1. **Blocks are the source of truth.** Each block has a stable ID (`b_7f2a…`), so edits are small and targeted. Blocks are validated before saving; if one block in a batch is invalid, nothing is written and Claude gets a precise error.
+2. **One fixed Typst template** turns the blocks into pages; content only ever enters it as data.
+3. **Folio measures where everything landed** and returns page fill, warnings and `layout_hints` after every write. `check_layout` scores the notebook. Thresholds live in `internal/layout/rules.go`.
+4. **Diagrams** are written in [D2](https://d2lang.com), laid out automatically, and flagged when their labels would render below 6pt.
+5. **Every change is a version** (the last 200 are kept). Writes can pass `expected_version`, so concurrent editors never overwrite each other silently.
+
+### MCP tools
+
+| Group | Tools |
+|---|---|
+| Notebooks | `list_notebooks`, `create_notebook`, `rename_notebook`, `delete_notebook`, `set_theme` (theme, paper, mode, density), `list_themes` |
+| Preferences | `set_notebook_guidelines`, `get_notebook_guidelines` |
+| Reading | `get_outline`, `read_blocks`, `get_layout_info` |
+| Writing | `append_blocks`, `insert_blocks`, `update_block`, `delete_blocks`, `move_blocks` |
+| Checking | `check_layout`, `render_pages`, `preview_diagram` |
+| History | `list_versions`, `undo`, `restore_version` |
+| Output | `export_pdf`, `get_viewer_url` |
+| Help | `get_authoring_guide` (also the resource `folio://guide`) |
+
+### Build and test
+
+You need **Go 1.26+**, the **Typst CLI 0.15+** (`brew install typst`) and **Docker** for the Postgres tests.
+
+```sh
+make build          # bin/folio
+make test           # the whole suite on SQLite
+make test-pg        # the whole suite on SQLite and Postgres (Docker)
+make kitchen-sink   # every block × every theme × dark/light → build/kitchen-sink/*.pdf
+```
+
+Run locally: `cp .env.example .env && make run-http`, then open `http://127.0.0.1:8080`.
+
+The tests guard:
+- injection safety and the accuracy of reported page numbers;
+- pagination rules and every layout check (each with a case that triggers it and one that doesn't);
+- undo and restore, on both databases;
+- an account isolation matrix that fails if any new tool skips the ownership check;
+- OAuth flows that behave like the real Claude clients;
+- CSRF protection, and that tokens never appear in logs.
+
+### Project layout
+
+```
+cmd/folio/            the folio command (http, mcp, admin, import, export, doctor)
+internal/model/       block types, validation, inline markdown, ordering keys
+internal/store/       SQLite + Postgres storage, versions/undo, accounts, OAuth, import
+internal/layout/      Typst build, page positions, layout checks and score, cache
+internal/diagram/     D2 → SVG with theme fonts
+internal/mcpserver/   MCP tools, server instructions, authoring guide and layout rules
+internal/account/     sign-up, login, Connect page, OAuth 2.1 server
+internal/httpserver/  /mcp, /healthz, security headers, wiring
+internal/viewer/      dashboard and live viewer (SSE)
+templates/            the Typst template and themes
+fonts/                bundled OFL fonts (Inter, JetBrains Mono, Kalam)
+```
+
+Design decisions and their reasons are in [`DECISIONS.md`](DECISIONS.md), and the build log is in [`PROGRESS.md`](PROGRESS.md).
 
 </details>
 

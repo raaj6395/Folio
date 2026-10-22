@@ -1,8 +1,8 @@
 # Folio — Progress
 
 **Last updated:** 2026-10-22 00:30
-**Current milestone:** Deployed on Render (https://folio-1i2o.onrender.com); next: Cloud Phase 2 (CLOUD_PHASE2_SPEC.md)
-**Current task:** U10 rollout of multi-user accounts (MULTIUSER_PLAN.md); code done and tested, NOT yet deployed
+**Current milestone:** Accounts + OAuth, UI/UX phases 1–2 and layout guidelines/linting are deployed on Render. Next: speed and latency (PERFORMANCE_PLAN.md).
+**Current task:** Layout guidelines L9: a manual run in a fresh Claude Code session (see docs/layout-guidelines-progress.md). Implemented plan files were removed; their decisions live in DECISIONS.md.
 **Overall status:** Needs user input
 
 ## Status summary
