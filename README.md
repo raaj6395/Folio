@@ -201,23 +201,23 @@ The import keeps every notebook's ID, blocks and full version history, so undo s
 
 ## 🔌 Connect Claude
 
-1. **Sign up** at `https://<your-service>.onrender.com/signup`. You land on **Connect Claude**.
-2. Click **Create token**. Folio shows your personal token (`folio_pat_…`) **once**, with ready-to-copy commands.
-3. **Claude Code:** paste the command it gives you. It looks like this:
+Folio signs Claude in with **OAuth**, just like connecting Google Drive or GitHub. There's no key to copy.
+
+**Claude app (web, desktop, phone):**
+1. **Settings → Connectors → Add custom connector**
+2. Name: `Folio`. URL: `https://<your-service>.onrender.com/mcp`
+3. Keep **Sign in now** and **Use Claude's published identity** (the defaults), then click **Add**
+4. A Folio page opens: log in (or sign up), check that the app is from **claude.ai**, then click **Allow**
+
+**Claude Code:**
 
 ```sh
-claude mcp add -s user --transport http folio https://<your-service>.onrender.com/mcp \
-  --header "Authorization: Bearer folio_pat_…"
-claude mcp list        # folio: ... (HTTP) - ✔ Connected
+claude mcp add -s user --transport http folio https://<your-service>.onrender.com/mcp
 ```
 
-**Claude desktop app:** the Connect page also gives you a `claude_desktop_config.json` snippet that uses `mcp-remote` to add the header (needs Node.js).
+Then run `/mcp` inside Claude Code, pick **folio** → **Authenticate**. Your browser opens Folio to approve.
 
-**Claude web and phone app:** these connect through OAuth, which is next on the roadmap. Until then, use Claude Code or the desktop app.
-
-You can create a token per device and **revoke** any of them on the Connect page. A revoked token stops working immediately.
-
-Then just ask: *"Make 1 page of notes on DNS using Folio and give me the viewer link."*
+Every connected app is listed on the **Connect Claude** page (`/connect`) with a **Disconnect** button. Disconnecting stops it immediately. For scripts and tools that can't do OAuth, the same page has **personal access tokens** under *Advanced*. Send one as `Authorization: Bearer folio_pat_…`.
 
 <details>
 <summary><b>Tip: tell Claude when to use Folio (CLAUDE.md snippet)</b></summary>
@@ -353,7 +353,7 @@ The thinking behind the design lives in [`DECISIONS.md`](DECISIONS.md), with eve
 - [x] Live viewer
 - [x] Postgres + MCP over HTTP, deployed on Render, SQLite import
 - [x] **Accounts:** sign up, log in, notebooks private to each user, personal access tokens to connect Claude ([plan](MULTIUSER_PLAN.md))
-- [ ] **OAuth** so the Claude app's "Add custom connector" shows Folio's login page
+- [x] **OAuth** so the Claude app's "Add custom connector" shows Folio's login page (CIMD + DCR, PKCE, refresh rotation)
 - [ ] Anki export from Q&A cards, iPad-friendly fill-in PDFs, note styles (Cornell, flashcards)
 
 ---
@@ -368,9 +368,16 @@ You're probably on Render's Free instance, which sleeps after inactivity. The fi
 </details>
 
 <details>
-<summary><b>Claude says the connection needs authentication (401)</b></summary>
+<summary><b>The Claude app says "Couldn't reach the MCP server" or sign-in fails</b></summary>
 
-The token is missing, mistyped or revoked. Create a new one on the **Connect Claude** page, then remove and re-add the server with the new `--header "Authorization: Bearer …"`.
+Check that the URL ends with `/mcp`, and that `https://<your-service>.onrender.com/.well-known/oauth-protected-resource/mcp` and `/.well-known/oauth-authorization-server` open in a browser. Claude caches these documents for about 5 minutes, so wait a few minutes after a redeploy. On the Free instance, the first request after idle can be slow, so retry once.
+
+</details>
+
+<details>
+<summary><b>Claude Code says it needs to authenticate</b></summary>
+
+Run `/mcp`, pick folio and choose **Authenticate**. If you use a personal token instead, it may have been revoked: create a new one under *Advanced* on the Connect page.
 
 </details>
 

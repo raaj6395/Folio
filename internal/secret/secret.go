@@ -78,3 +78,17 @@ func NewSessionID() (plain, hash string) {
 	plain = random(32)
 	return plain, Hash(plain)
 }
+
+func NewOpaque(prefix string) (plain, hash, last4 string) {
+	plain = prefix + random(32)
+	return plain, Hash(plain), plain[len(plain)-4:]
+}
+
+func PKCEMatches(verifier, challenge string) bool {
+	if len(verifier) < 43 || len(verifier) > 128 {
+		return false
+	}
+	sum := sha256.Sum256([]byte(verifier))
+	got := base64.RawURLEncoding.EncodeToString(sum[:])
+	return subtle.ConstantTimeCompare([]byte(got), []byte(challenge)) == 1
+}

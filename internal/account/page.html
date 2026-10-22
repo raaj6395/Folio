@@ -30,42 +30,78 @@
     {{if eq .Page "signup"}}<p class="meta">At least 10 characters.</p>{{end}}
     <button class="btn" type="submit">{{if eq .Page "login"}}Log in{{else}}Sign up{{end}}</button>
   </form>
-  <p class="meta">{{if eq .Page "login"}}New here? <a href="/signup">Create an account</a>{{else}}Already have an account? <a href="/login">Log in</a>{{end}}</p>
+  <p class="meta">{{if eq .Page "login"}}New here? <a href="/signup?next={{.Next}}">Create an account</a>{{else}}Already have an account? <a href="/login?next={{.Next}}">Log in</a>{{end}}</p>
 {{end}}
 {{if eq .Page "connect"}}
   <h1>Connect Claude</h1>
-  {{if .NewToken}}
   <div class="card highlight">
-    <h2>Your new token</h2>
-    <p class="error">Copy it now. Folio shows it only once.</p>
-    <div class="copy"><code id="tok">{{.NewToken}}</code><button class="btn" type="button" data-copy="tok">Copy</button></div>
+    <h2 style="margin-top:0">Claude app <span class="meta">web · desktop · phone</span></h2>
+    <ol class="steps">
+      <li>In Claude, open <b>Settings → Connectors → Add custom connector</b>.</li>
+      <li>Name: <code>Folio</code>. URL:
+        <div class="copy"><code id="url">{{.MCPURL}}</code><button class="btn" type="button" data-copy="url">Copy</button></div></li>
+      <li>Keep <b>Sign in now</b> and <b>Use Claude's published identity</b>, then click <b>Add</b>.</li>
+      <li>Folio opens: you're already logged in, so click <b>Allow</b>. Done.</li>
+    </ol>
     <h3>Claude Code</h3>
-    <p class="meta">Run this in your terminal:</p>
-    <div class="copy"><pre id="cmd">claude mcp add -s user --transport http folio {{.MCPURL}} --header "Authorization: Bearer {{.NewToken}}"</pre><button class="btn" type="button" data-copy="cmd">Copy</button></div>
-    <p class="meta">Then check with <code>claude mcp list</code>: <code>folio</code> should show <b>Connected</b>. Ask Claude: <i>"Make 1 page of notes on DNS using Folio."</i></p>
-    <h3>Claude desktop app</h3>
-    <p class="meta">Needs Node.js. Add this to <code>claude_desktop_config.json</code> under <code>mcpServers</code>, then restart the app:</p>
-    <div class="copy"><pre id="desk">"folio": {
-  "command": "npx",
-  "args": ["-y", "mcp-remote", "{{.MCPURL}}", "--header", "Authorization: Bearer {{.NewToken}}"]
-}</pre><button class="btn" type="button" data-copy="desk">Copy</button></div>
-    <p class="meta">The Claude web and phone app need OAuth, which is coming next.</p>
+    <div class="copy"><pre id="cc">claude mcp add -s user --transport http folio {{.MCPURL}}</pre><button class="btn" type="button" data-copy="cc">Copy</button></div>
+    <p class="meta">Then run <code>/mcp</code> in Claude Code, pick <b>folio</b> and choose <b>Authenticate</b>. Your browser opens this site to approve.</p>
   </div>
-  {{end}}
-  <form method="post" action="/connect/tokens" class="card row">
-    <label class="grow">Token name <input type="text" name="name" placeholder="e.g. MacBook Claude Code" maxlength="60"></label>
-    <button class="btn" type="submit">Create token</button>
-  </form>
-  <h2>Your tokens</h2>
-  {{if .Tokens}}<table class="tokens">
-    <tr><th>Name</th><th>Token</th><th>Created</th><th>Last used</th><th></th></tr>
-    {{range .Tokens}}<tr{{if .Revoked}} class="revoked"{{end}}>
-      <td>{{.Name}}</td><td><code>folio_pat_…{{.Last4}}</code></td>
+
+  <h2>Connected apps</h2>
+  {{if .Grants}}<table class="tokens">
+    <tr><th>App</th><th>Connected</th><th>Last refreshed</th><th></th></tr>
+    {{range .Grants}}<tr>
+      <td>{{.ClientName}}</td>
       <td>{{.CreatedAt.Local.Format "2006-01-02"}}</td>
-      <td>{{if .LastUsedAt.IsZero}}never{{else}}{{.LastUsedAt.Local.Format "2006-01-02 15:04"}}{{end}}</td>
-      <td>{{if .Revoked}}revoked{{else}}<form method="post" action="/connect/tokens/{{.ID}}/revoke" style="margin:0"><button class="link danger" type="submit">Revoke</button></form>{{end}}</td>
+      <td>{{if .LastUsedAt.IsZero}}—{{else}}{{.LastUsedAt.Local.Format "2006-01-02 15:04"}}{{end}}</td>
+      <td><form method="post" action="/connect/apps/{{.ID}}/revoke" style="margin:0"><button class="link danger" type="submit">Disconnect</button></form></td>
     </tr>{{end}}
-  </table>{{else}}<p class="meta">No tokens yet. Create one to connect Claude.</p>{{end}}
+  </table>{{else}}<p class="meta">No apps connected yet.</p>{{end}}
+
+  <details class="advanced"{{if .NewToken}} open{{end}}>
+    <summary>Advanced: personal access tokens</summary>
+    <p class="meta">For tools that can't sign in with OAuth. A token works like a password for your notebooks: keep it secret.</p>
+    {{if .NewToken}}
+    <div class="card">
+      <p class="error">Copy your new token now. Folio shows it only once.</p>
+      <div class="copy"><code id="tok">{{.NewToken}}</code><button class="btn" type="button" data-copy="tok">Copy</button></div>
+      <p class="meta">Use it as the header <code>Authorization: Bearer {{.NewToken}}</code>, for example:</p>
+      <div class="copy"><pre id="cmd">claude mcp add -s user --transport http folio {{.MCPURL}} --header "Authorization: Bearer {{.NewToken}}"</pre><button class="btn" type="button" data-copy="cmd">Copy</button></div>
+    </div>
+    {{end}}
+    <form method="post" action="/connect/tokens" class="card row">
+      <label class="grow">Token name <input type="text" name="name" placeholder="e.g. CI script" maxlength="60"></label>
+      <button class="btn" type="submit">Create token</button>
+    </form>
+    {{if .Tokens}}<table class="tokens">
+      <tr><th>Name</th><th>Token</th><th>Created</th><th>Last used</th><th></th></tr>
+      {{range .Tokens}}<tr{{if .Revoked}} class="revoked"{{end}}>
+        <td>{{.Name}}</td><td><code>folio_pat_…{{.Last4}}</code></td>
+        <td>{{.CreatedAt.Local.Format "2006-01-02"}}</td>
+        <td>{{if .LastUsedAt.IsZero}}never{{else}}{{.LastUsedAt.Local.Format "2006-01-02 15:04"}}{{end}}</td>
+        <td>{{if .Revoked}}revoked{{else}}<form method="post" action="/connect/tokens/{{.ID}}/revoke" style="margin:0"><button class="link danger" type="submit">Revoke</button></form>{{end}}</td>
+      </tr>{{end}}
+    </table>{{end}}
+  </details>
+{{end}}
+{{if eq .Page "consent"}}
+  <h1>Allow access?</h1>
+  <div class="card highlight">
+    <p>An app from <b>{{.ClientHost}}</b> <span class="meta">(it calls itself "{{.ClientName}}")</span> wants to use your Folio account <b>{{.Email}}</b>.</p>
+    <p class="meta">After you allow it, you'll be sent back to <b>{{.RedirectHost}}</b>. It will be able to read, create, edit and delete your notebooks. You can disconnect it any time on the Connect Claude page.</p>
+    {{if .LoopbackOnly}}<p class="error">This app returns to a program on your own computer. Only allow it if you just started connecting Folio from that program (for example Claude Code).</p>{{end}}
+    <form method="post" action="/oauth/authorize" class="row" style="display:flex;gap:10px">
+      {{range $k, $v := .Form}}{{if ne $k "decision"}}<input type="hidden" name="{{$k}}" value="{{index $v 0}}">{{end}}{{end}}
+      <button class="btn" type="submit" name="decision" value="allow">Allow</button>
+      <button class="btn secondary" type="submit" name="decision" value="deny">Cancel</button>
+    </form>
+  </div>
+{{end}}
+{{if eq .Page "oauth_error"}}
+  <h1>Can't connect</h1>
+  <p class="error">{{.Error}}</p>
+  <p class="meta">Go back to the app and try adding the connector again. If it keeps failing, check the URL ends with <code>/mcp</code>.</p>
 {{end}}
 </main>
 <script>

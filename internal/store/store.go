@@ -79,6 +79,35 @@ var pgMigrations = []string{
 	);
 	ALTER TABLE notebooks ADD COLUMN user_id TEXT REFERENCES users(id);
 	CREATE INDEX notebooks_user ON notebooks(user_id, updated_at)`,
+	`CREATE TABLE oauth_clients (
+		client_id TEXT PRIMARY KEY,
+		client_name TEXT NOT NULL,
+		redirect_uris TEXT NOT NULL,
+		kind TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		expires_at TEXT
+	);
+	CREATE TABLE oauth_codes (
+		code_hash TEXT PRIMARY KEY,
+		client_id TEXT NOT NULL,
+		user_id TEXT NOT NULL REFERENCES users(id),
+		redirect_uri TEXT NOT NULL,
+		code_challenge TEXT NOT NULL,
+		resource TEXT NOT NULL,
+		expires_at TEXT NOT NULL,
+		used INTEGER NOT NULL DEFAULT 0
+	);
+	CREATE TABLE oauth_grants (
+		id TEXT PRIMARY KEY,
+		user_id TEXT NOT NULL REFERENCES users(id),
+		client_id TEXT NOT NULL,
+		client_name TEXT NOT NULL,
+		refresh_hash TEXT NOT NULL UNIQUE,
+		created_at TEXT NOT NULL,
+		last_used_at TEXT,
+		revoked_at TEXT
+	);
+	ALTER TABLE api_tokens ADD COLUMN grant_id TEXT`,
 }
 
 var migrations = []string{
@@ -145,6 +174,35 @@ var migrations = []string{
 	ALTER TABLE notebooks ADD COLUMN user_id TEXT REFERENCES users(id);
 	UPDATE notebooks SET user_id = 'u_local';
 	CREATE INDEX notebooks_user ON notebooks(user_id, updated_at);`,
+	`CREATE TABLE oauth_clients (
+		client_id TEXT PRIMARY KEY,
+		client_name TEXT NOT NULL,
+		redirect_uris TEXT NOT NULL,
+		kind TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		expires_at TEXT
+	);
+	CREATE TABLE oauth_codes (
+		code_hash TEXT PRIMARY KEY,
+		client_id TEXT NOT NULL,
+		user_id TEXT NOT NULL REFERENCES users(id),
+		redirect_uri TEXT NOT NULL,
+		code_challenge TEXT NOT NULL,
+		resource TEXT NOT NULL,
+		expires_at TEXT NOT NULL,
+		used INTEGER NOT NULL DEFAULT 0
+	);
+	CREATE TABLE oauth_grants (
+		id TEXT PRIMARY KEY,
+		user_id TEXT NOT NULL REFERENCES users(id),
+		client_id TEXT NOT NULL,
+		client_name TEXT NOT NULL,
+		refresh_hash TEXT NOT NULL UNIQUE,
+		created_at TEXT NOT NULL,
+		last_used_at TEXT,
+		revoked_at TEXT
+	);
+	ALTER TABLE api_tokens ADD COLUMN grant_id TEXT;`,
 }
 
 const LocalUser = "u_local"

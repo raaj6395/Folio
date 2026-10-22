@@ -128,6 +128,15 @@ func (s *Store) CreateToken(userID, name, tokenHash, last4 string) (Token, error
 	return t, err
 }
 
+func (s *Store) TokenExpiry(tokenHash string) time.Time {
+	var exp sql.NullString
+	s.db.QueryRow(s.q(`SELECT expires_at FROM api_tokens WHERE token_hash = ?`), tokenHash).Scan(&exp)
+	if exp.Valid {
+		return parseTS(exp.String)
+	}
+	return time.Time{}
+}
+
 func (s *Store) TokenUser(tokenHash string) (User, string, error) {
 	var tokenID string
 	var lastUsed sql.NullString
@@ -154,7 +163,7 @@ func (s *Store) TokenUser(tokenHash string) (User, string, error) {
 }
 
 func (s *Store) Tokens(userID string) ([]Token, error) {
-	rows, err := s.db.Query(s.q(`SELECT id, name, last4, created_at, last_used_at, revoked_at FROM api_tokens WHERE user_id = ? ORDER BY created_at DESC`), userID)
+	rows, err := s.db.Query(s.q(`SELECT id, name, last4, created_at, last_used_at, revoked_at FROM api_tokens WHERE user_id = ? AND grant_id IS NULL ORDER BY created_at DESC`), userID)
 	if err != nil {
 		return nil, err
 	}

@@ -79,7 +79,8 @@ Legend: [ ] todo · [~] in progress · [x] done · [!] blocked
 - [x] U3–U8 accounts, Connect page, bearer auth, viewer sessions, CSRF, headers, limits, isolation matrix — `53ba446` — verified: matrix passes on both backends and fails when ownership is removed (mutation check)
 - [x] U5/U5b/U7 tool scoping, rename/delete_notebook, render limit, URL-only export — `b8f29ea`
 - [x] U9 admin CLI, import --owner, auth-by-default — `15e786a` — verified: full rollout rehearsal (old binary → migrate → signup → adopt → require-owners → token → MCP)
-- [ ] U10 rollout on Render (needs the user: rotate DB password, sign up, then adopt)
+- [x] U10 rollout of accounts — `04b44de` live; 12 old notebooks left as orphans (user: development data, not needed)
+- [x] OAuth for Claude connectors (CIMD + DCR, PKCE, refresh rotation, consent, disconnect) — verified: TestOAuthFlowLikeClaude on SQLite + Postgres (discovery, CIMD, Claude Code loopback redirect with port, code replay, wrong PKCE, foreign redirect, stale refresh, disconnect, DCR), SSRF guard test, real Claude Code CIMD fetched and parsed
 - [~] U11 docs — README/DECISIONS/PROGRESS updated
 
 ## Blockers

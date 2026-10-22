@@ -189,3 +189,20 @@
 - **Rehearsed:** the binary currently live (548f3d0) created a notebook in a fresh local Postgres at schema v1. The new binary migrated it (the notebook became 1 orphan, invisible), then signup → adopt → require-owners (`user_id` NOT NULL) → create a token → MCP `list_notebooks` with the token returned it. A bad token got 401.
 - **Alternatives considered:** a token in the URL for claude.ai (rejected: URLs leak); bcrypt (argon2id is OWASP's first choice); a NOT NULL migration (would block startup).
 - **Affects interface/behaviour?** yes — **User approved?** yes (MULTIUSER_PLAN.md approved 2026-10-22)
+
+## 2026-10-22 — OAuth 2.1 for Claude connectors (CIMD + DCR)
+- **Decision:** Folio is its own authorization server.
+  - **Discovery:** protected-resource metadata (RFC 9728) at `/.well-known/oauth-protected-resource` and `/.well-known/oauth-protected-resource/mcp`, with `resource` = `<public>/mcp` and `authorization_servers` = `[<public>]`. AS metadata (RFC 8414) at `/.well-known/oauth-authorization-server` advertises `client_id_metadata_document_supported: true`, `token_endpoint_auth_methods_supported: ["none"]` (Claude needs **both** to choose CIMD), S256 PKCE, `authorization_response_iss_parameter_supported` (RFC 9207), and a `registration_endpoint` (DCR fallback). The 401 from `/mcp` carries `WWW-Authenticate: Bearer resource_metadata="…/mcp"`.
+  - **Clients:**
+    - CIMD: client documents are fetched with an SSRF guard (dial-time IP check on the resolved address, no redirects, HTTPS only, 64KB cap, 5s timeout), their `client_id` must match exactly, and they're cached 1h.
+    - Non-loopback redirects must share the `client_id` origin.
+    - Loopback redirects (`localhost`, `127.0.0.1`, `::1`) match **without the port**, as Anthropic's docs require for Claude Code. Verified against Claude Code's live document at `https://claude.ai/oauth/claude-code-client-metadata`.
+    - DCR clients are public (`none`).
+  - **Flow:** authorize requires login (redirects to `/login?next=`), then a consent page that names the **host of the client_id URL** (not the self-asserted `client_name`), the redirect host, and a warning when the app has only loopback redirects. Codes are single-use, last 10 min and are bound to the client, redirect_uri, PKCE challenge and resource.
+  - **Tokens:** opaque access tokens (`folio_oat_`, 1h, stored hashed in `api_tokens` with `grant_id`) and refresh tokens (`folio_ort_`, rotated on every use, invalid → `invalid_grant`). Grants are listed on `/connect`; Disconnect revokes the grant and its access tokens.
+  - Token, register and metadata endpoints sit outside CSRF protection (no cookies; called server-to-server). The consent POST sits inside it.
+  - Personal access tokens stay available under "Advanced" on `/connect`. The `mcp-remote` desktop snippet is gone.
+- **Sources read before building:** MCP authorization spec (draft): authorization, authorization-server discovery, client registration. Anthropic: "Authentication for connectors" (claude.com/docs/connectors/building/authentication) and "Lazy authentication" (…/lazy-authentication): CIMD selection rule, callback `https://claude.ai/api/mcp/auth_callback`, port-agnostic loopback matching, consent naming the client_id host, refresh rotation with `invalid_grant`, form-encoded token endpoint, 10s endpoint timeout.
+- **Why:** the Claude app's custom connector dialog only does OAuth (no token field), and the user wants name + URL + sign-in.
+- **Alternatives considered:** a token in the URL (rejected: the spec forbids it); `static_headers` (beta, organization-wide, can't identify the individual user).
+- **Affects interface/behaviour?** yes — **User approved?** yes (user asked to implement the auth flow properly, 2026-10-22)

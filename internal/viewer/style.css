@@ -71,3 +71,6 @@ table.tokens { width: 100%; border-collapse: collapse; font-size: 13px; }
 table.tokens th, table.tokens td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); }
 table.tokens tr.revoked td { color: var(--muted); text-decoration: line-through; }
 table.tokens tr.revoked td:last-child { text-decoration: none; }
+button.btn.secondary { background: var(--surface); color: var(--ink); border: 1px solid var(--border); }
+ol.steps { padding-left: 20px; } ol.steps li { margin: 8px 0; }
+details.advanced { margin-top: 28px; } details.advanced summary { cursor: pointer; font-weight: 600; color: var(--muted); }

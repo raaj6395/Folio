@@ -20,10 +20,11 @@ import (
 )
 
 type Options struct {
-	Home      string
-	PublicURL string
-	Public    bool
-	Auth      bool
+	Home       string
+	PublicURL  string
+	Public     bool
+	Auth       bool
+	ClientHTTP *http.Client
 }
 
 func Handler(st *store.Store, lb *layout.Builder, o Options) http.Handler {
@@ -34,17 +35,18 @@ func Handler(st *store.Store, lb *layout.Builder, o Options) http.Handler {
 	srv := mcpserver.New(st, lb, o.Home, o.PublicURL, localUser)
 	var mcpHandler http.Handler = mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return srv }, &mcp.StreamableHTTPOptions{Stateless: true, DisableLocalhostProtection: o.Public})
 
+	mux := http.NewServeMux()
 	var site *http.ServeMux
 	if o.Auth {
-		accounts := account.New(st, o.PublicURL)
+		accounts := account.New(st, o.PublicURL, o.ClientHTTP)
 		site = viewer.New(st, lb, accounts.User, true)
 		accounts.Register(site)
-		mcpHandler = bearer(st, mcpHandler)
+		accounts.RegisterOAuth(site, mux)
+		mcpHandler = bearer(st, accounts.ResourceMetadataURL(), mcpHandler)
 	} else {
 		site = viewer.New(st, lb, viewer.Local, false)
 	}
 
-	mux := http.NewServeMux()
 	mux.Handle("/mcp", mcpHandler)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		if err := st.Ping(); err != nil {
@@ -60,25 +62,26 @@ func Handler(st *store.Store, lb *layout.Builder, o Options) http.Handler {
 	return mux
 }
 
-func bearer(st *store.Store, next http.Handler) http.Handler {
+func bearer(st *store.Store, metadataURL string, next http.Handler) http.Handler {
 	failures := account.NewLimiter(30, time.Minute)
 	verify := func(ctx context.Context, token string, r *http.Request) (*auth.TokenInfo, error) {
-		u, _, err := st.TokenUser(secret.Hash(token))
+		hash := secret.Hash(token)
+		u, _, err := st.TokenUser(hash)
 		if err != nil {
 			failures.Allow(account.ClientIP(r))
-			return nil, fmt.Errorf("%w: invalid or revoked Folio token; create a new one on the Connect Claude page", auth.ErrInvalidToken)
+			return nil, fmt.Errorf("%w: invalid, expired or revoked Folio token", auth.ErrInvalidToken)
 		}
-		return &auth.TokenInfo{UserID: u.ID}, nil
+		return &auth.TokenInfo{UserID: u.ID, Expiration: st.TokenExpiry(hash)}, nil
 	}
-	protected := auth.RequireBearerToken(verify, &auth.RequireBearerTokenOptions{AllowMissingExpiration: true})(next)
+	protected := auth.RequireBearerToken(verify, &auth.RequireBearerTokenOptions{AllowMissingExpiration: true, ResourceMetadataURL: metadataURL})(next)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if failures.Exceeded(account.ClientIP(r)) {
 			http.Error(w, "too many failed token attempts; wait a minute", http.StatusTooManyRequests)
 			return
 		}
 		if r.Header.Get("Authorization") == "" {
-			w.Header().Set("WWW-Authenticate", `Bearer realm="folio"`)
-			http.Error(w, "missing Folio token: create one on the Connect Claude page, then add it as an \"Authorization: Bearer <token>\" header", http.StatusUnauthorized)
+			w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+metadataURL+`"`)
+			http.Error(w, "sign-in required: connect Folio in Claude (it will open the Folio login), or send a personal token as \"Authorization: Bearer <token>\"", http.StatusUnauthorized)
 			return
 		}
 		protected.ServeHTTP(w, r)

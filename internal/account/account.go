@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/mail"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -26,20 +27,29 @@ var pageHTML string
 var pageTmpl = template.Must(template.New("page").Parse(pageHTML))
 
 type Accounts struct {
-	st        *store.Store
-	publicURL string
-	signup    *Limiter
-	login     *Limiter
-	tokens    *Limiter
+	st            *store.Store
+	publicURL     string
+	cimd          *http.Client
+	signup        *Limiter
+	login         *Limiter
+	tokens        *Limiter
+	registrations *Limiter
+	tokenCalls    *Limiter
 }
 
-func New(st *store.Store, publicURL string) *Accounts {
+func New(st *store.Store, publicURL string, cimd *http.Client) *Accounts {
+	if cimd == nil {
+		cimd = cimdHTTPClient(false)
+	}
 	return &Accounts{
-		st:        st,
-		publicURL: strings.TrimSuffix(publicURL, "/"),
-		signup:    NewLimiter(5, time.Hour),
-		login:     NewLimiter(10, 15*time.Minute),
-		tokens:    NewLimiter(20, time.Hour),
+		st:            st,
+		publicURL:     strings.TrimSuffix(publicURL, "/"),
+		cimd:          cimd,
+		signup:        NewLimiter(5, time.Hour),
+		login:         NewLimiter(10, 15*time.Minute),
+		tokens:        NewLimiter(20, time.Hour),
+		registrations: NewLimiter(20, time.Hour),
+		tokenCalls:    NewLimiter(60, time.Minute),
 	}
 }
 
@@ -70,6 +80,10 @@ type page struct {
 	Title, Page, Error, Next, EmailInput, Email string
 	NewToken, MCPURL                            string
 	Tokens                                      []store.Token
+	Grants                                      []store.Grant
+	ClientName, ClientHost, RedirectHost        string
+	LoopbackOnly                                bool
+	Form                                        url.Values
 }
 
 func render(w http.ResponseWriter, status int, p page) {
@@ -202,7 +216,11 @@ func (a *Accounts) connectPage(w http.ResponseWriter, userID, email, newToken st
 	if err != nil {
 		slog.Error("tokens", "err", err)
 	}
-	render(w, http.StatusOK, page{Title: "Connect Claude", Page: "connect", Email: email, Tokens: tokens, NewToken: newToken, MCPURL: a.publicURL + "/mcp"})
+	grants, err := a.st.Grants(userID)
+	if err != nil {
+		slog.Error("grants", "err", err)
+	}
+	render(w, http.StatusOK, page{Title: "Connect Claude", Page: "connect", Email: email, Tokens: tokens, Grants: grants, NewToken: newToken, MCPURL: a.publicURL + "/mcp"})
 }
 
 func (a *Accounts) connect(w http.ResponseWriter, r *http.Request) {
