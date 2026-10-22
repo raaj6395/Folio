@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-10-22 00:30
 **Current milestone:** Deployed on Render (https://folio-1i2o.onrender.com); next: Cloud Phase 2 (CLOUD_PHASE2_SPEC.md)
-**Current task:** none — waiting for go-ahead on CLOUD_PHASE2_SPEC.md
+**Current task:** U10 rollout of multi-user accounts (MULTIUSER_PLAN.md); code done and tested, NOT yet deployed
 **Overall status:** Needs user input
 
 ## Status summary
@@ -71,6 +71,16 @@ Legend: [ ] todo · [~] in progress · [x] done · [!] blocked
 - [x] C3.3 persistence — verified: rows in Postgres (10 blocks, 9 snapshots); same version/pages after restarting `folio http`, and again after `docker compose down` + `make db-up`
 - [x] C3.4 live viewer on Postgres — verified: SSE delivered versions 1→9 while Claude wrote
 - [x] C4 docs — README "Run with Postgres + HTTP (local)", DECISIONS entry, this section
+
+## Multi-user (MULTIUSER_PLAN.md)
+- [x] U0 stateless MCP + commit in /healthz — `548f3d0` — verified: restart test reproduced `session not found`, then fixed; live /healthz showed the commit. **DB password rotation: still to do (user).**
+- [x] U1/U2 schema + user-scoped store — `535f5a7` — verified: isolation, orphan, session/token, quota tests on SQLite and Postgres
+- [x] U3 secret package — `08e0f0d`
+- [x] U3–U8 accounts, Connect page, bearer auth, viewer sessions, CSRF, headers, limits, isolation matrix — `53ba446` — verified: matrix passes on both backends and fails when ownership is removed (mutation check)
+- [x] U5/U5b/U7 tool scoping, rename/delete_notebook, render limit, URL-only export — `b8f29ea`
+- [x] U9 admin CLI, import --owner, auth-by-default — `15e786a` — verified: full rollout rehearsal (old binary → migrate → signup → adopt → require-owners → token → MCP)
+- [ ] U10 rollout on Render (needs the user: rotate DB password, sign up, then adopt)
+- [~] U11 docs — README/DECISIONS/PROGRESS updated
 
 ## Blockers
 - (none)

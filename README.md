@@ -159,7 +159,7 @@ Every block is validated before anything is saved. If one block in a batch of 10
 
 Folio runs as a single Docker web service plus a Postgres database. The repo's `Dockerfile` builds Folio and installs Typst; fonts and templates are built into the binary.
 
-> ⚠️ **No login yet.** Right now, anyone who knows your service URL can read and change every notebook. Keep the URL private. Accounts and per-user notebooks are being designed (see [Roadmap](#-roadmap)).
+> 🔐 **Accounts built in.** Every notebook belongs to one account. People sign up on your site, create a personal token, and Claude only ever sees their own notebooks.
 
 **1. Create the database:** Render → **New → Postgres**. Pick a region (e.g. Oregon) and note the **Internal Database URL**.
 
@@ -181,7 +181,7 @@ Folio runs as a single Docker web service plus a Postgres database. The repo's `
 
 Render sets `PORT` itself, and Folio picks up its public address from Render automatically.
 
-**4. Check it:** open `https://<your-service>.onrender.com/healthz`. It should say `folio ok (postgres)`.
+**4. Check it:** open `https://<your-service>.onrender.com/healthz`. It should say `folio ok (postgres) commit …`. Then open the site itself and **sign up**.
 
 Every `git push` to `main` redeploys. Your notebooks are safe across deploys, because they live in Postgres.
 
@@ -201,14 +201,21 @@ The import keeps every notebook's ID, blocks and full version history, so undo s
 
 ## 🔌 Connect Claude
 
-**Claude Code** (terminal or IDE):
+1. **Sign up** at `https://<your-service>.onrender.com/signup`. You land on **Connect Claude**.
+2. Click **Create token**. Folio shows your personal token (`folio_pat_…`) **once**, with ready-to-copy commands.
+3. **Claude Code:** paste the command it gives you. It looks like this:
 
 ```sh
-claude mcp add -s user --transport http folio https://<your-service>.onrender.com/mcp
+claude mcp add -s user --transport http folio https://<your-service>.onrender.com/mcp \
+  --header "Authorization: Bearer folio_pat_…"
 claude mcp list        # folio: ... (HTTP) - ✔ Connected
 ```
 
-**Claude app** (web, desktop, phone): **Settings → Connectors → Add custom connector** → `https://<your-service>.onrender.com/mcp`. Availability of custom connectors depends on your Claude plan.
+**Claude desktop app:** the Connect page also gives you a `claude_desktop_config.json` snippet that uses `mcp-remote` to add the header (needs Node.js).
+
+**Claude web and phone app:** these connect through OAuth, which is next on the roadmap. Until then, use Claude Code or the desktop app.
+
+You can create a token per device and **revoke** any of them on the Connect page. A revoked token stops working immediately.
 
 Then just ask: *"Make 1 page of notes on DNS using Folio and give me the viewer link."*
 
@@ -264,6 +271,7 @@ The same service that Claude talks to also serves a viewer:
 | `FOLIO_HTTP_ADDR` | `127.0.0.1:8080` | Listen address for `folio http` (overrides `PORT`) |
 | `FOLIO_PUBLIC_URL` | Render's `RENDER_EXTERNAL_URL`, else `http://` + listen address | Base for the PDF/viewer links that tools return |
 | `FOLIO_HOME` | `~/.folio` (`/tmp/folio` in Docker) | Render cache, logs, and the SQLite file in local mode |
+| `FOLIO_SIGNUP` | `open` | `closed` turns off public sign-up (create accounts with an admin process instead) |
 | `FOLIO_TEST_DB_URL` | — | Runs the test suite against Postgres too |
 
 <details>
@@ -271,8 +279,12 @@ The same service that Claude talks to also serves a viewer:
 
 | Command | What it does |
 |---|---|
-| `folio http [--unsafe-public]` | MCP at `/mcp` + viewer + `/healthz`. Loopback-only unless `--unsafe-public` (the Docker image passes it). |
-| `folio import --from <file.db> [--dry-run] [--include-deleted]` | Copy notebooks from SQLite into `FOLIO_DB_URL` |
+| `folio http [--no-auth]` | MCP at `/mcp` (token required), accounts, viewer and `/healthz`. `--no-auth` is for local development and only works on loopback addresses. |
+| `folio admin adopt --email <e>` | Give every notebook without an owner to that account |
+| `folio admin reset-password --email <e>` | Set and print a new random password (there's no email yet) |
+| `folio admin disable-user --email <e>` | Block that account's login and tokens |
+| `folio admin require-owners` | (Postgres) Make ownership mandatory once no orphans remain |
+| `folio import --from <file.db> [--owner <email>] [--dry-run] [--include-deleted]` | Copy notebooks from SQLite into `FOLIO_DB_URL` |
 | `folio export <notebook-id> [-o file.pdf]` | Export a PDF from the command line |
 | `folio doctor` | Checks Typst, fonts, data dir and the database (password masked) |
 | `folio mcp` | MCP over stdio, for local development |
@@ -294,7 +306,7 @@ make kitchen-sink   # every block type × every theme × dark/light → build/ki
 make lint
 ```
 
-Run it locally against Docker Postgres: `cp .env.example .env`, then `make run-http`. The server is on `http://127.0.0.1:8080`, and loopback-only by design.
+Run it locally against Docker Postgres: `cp .env.example .env`, then `make run-http`. The server is on `http://127.0.0.1:8080` with accounts on. Add `--no-auth` for quick local hacking without logging in (loopback only).
 
 Some tests use `pdftotext` (poppler) when it's installed, to prove that the page numbers Folio reports match the actual PDF.
 
@@ -306,7 +318,8 @@ Some tests use `pdftotext` (poppler) when it's installed, to prove that the page
 - **Pagination:** headings never sit alone at the bottom of a page, boxes don't split, and diagrams keep their captions (checked across every page position).
 - **History:** undo, restore, version conflicts and snapshot pruning, on both SQLite and Postgres.
 - **Ordering:** block order is byte-order sorted on Postgres (`COLLATE "C"`). Otherwise some server locales would silently scramble your notes.
-- **HTTP:** a full Claude-style session over MCP/HTTP, the 403 fix for proxies like Render, and the loopback guard.
+- **Accounts:** an isolation matrix where user B attacks user A's notebook with **every** tool and viewer route and must always get "not found". The test fails if a new tool isn't covered, and it's proven to catch a removed ownership check. Also: tokens (missing/invalid/revoked), sessions, logout, CSRF, open redirects, identical errors for unknown emails, and tokens never appearing in logs.
+- **HTTP:** a full Claude-style session over MCP/HTTP, surviving server restarts (stateless MCP), the 403 fix for proxies like Render, and the loopback guard.
 - **Import:** keeps IDs and history, and running it twice changes nothing.
 
 </details>
@@ -339,7 +352,7 @@ The thinking behind the design lives in [`DECISIONS.md`](DECISIONS.md), with eve
 - [x] Layout feedback, page images for Claude, undo/versions
 - [x] Live viewer
 - [x] Postgres + MCP over HTTP, deployed on Render, SQLite import
-- [ ] **Accounts:** sign up, log in, notebooks private to each user, personal access tokens to connect Claude ([plan](MULTIUSER_PLAN.md))
+- [x] **Accounts:** sign up, log in, notebooks private to each user, personal access tokens to connect Claude ([plan](MULTIUSER_PLAN.md))
 - [ ] **OAuth** so the Claude app's "Add custom connector" shows Folio's login page
 - [ ] Anki export from Q&A cards, iPad-friendly fill-in PDFs, note styles (Cornell, flashcards)
 
@@ -355,9 +368,23 @@ You're probably on Render's Free instance, which sleeps after inactivity. The fi
 </details>
 
 <details>
+<summary><b>Claude says the connection needs authentication (401)</b></summary>
+
+The token is missing, mistyped or revoked. Create a new one on the **Connect Claude** page, then remove and re-add the server with the new `--header "Authorization: Bearer …"`.
+
+</details>
+
+<details>
 <summary><b>The MCP connection fails, but <code>/healthz</code> works</b></summary>
 
-Make sure the URL ends with `/mcp`. If you run Folio behind another proxy, it must be started with `--unsafe-public` (the Docker image does this). That flag also relaxes the MCP library's localhost protection, which otherwise rejects proxied requests with 403.
+Make sure the URL ends with `/mcp` and the header is included. Behind a proxy (like Render), Folio relaxes the MCP library's localhost protection automatically when it listens publicly; otherwise proxied requests would get 403.
+
+</details>
+
+<details>
+<summary><b>I forgot my password</b></summary>
+
+There's no email yet, so the server admin runs `folio admin reset-password --email you@…` (against the production database URL) and passes on the new password.
 
 </details>
 
