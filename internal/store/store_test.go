@@ -59,7 +59,7 @@ func texts(t *testing.T, s *Store, id string) string {
 
 func TestMutateUndoRestore(t *testing.T) {
 	eachBackend(t, func(t *testing.T, s *Store) {
-		nb, err := s.CreateNotebook(LocalUser, "T", "clean", "plain", "light")
+		nb, err := s.CreateNotebook(LocalUser, "T", "clean", "plain", "light", "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -102,9 +102,42 @@ func TestMutateUndoRestore(t *testing.T) {
 	})
 }
 
+func TestGuidelinesAndDensityAreVersioned(t *testing.T) {
+	eachBackend(t, func(t *testing.T, s *Store) {
+		nb, _ := s.CreateNotebook(LocalUser, "T", "clean", "plain", "light", "")
+		if nb.Density != DefaultDensity {
+			t.Fatalf("new notebook density: %q", nb.Density)
+		}
+		set := func(g, d string) {
+			t.Helper()
+			if _, _, err := s.Mutate(LocalUser, nb.ID, nil, "x", "x", func(n *Notebook, bs []model.Block) ([]model.Block, error) {
+				n.Guidelines, n.Density = g, d
+				return bs, nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		set("Use British spelling.", "airy")
+		set("Use British spelling. One H1 per page.", "compact")
+		if _, _, err := s.Undo(LocalUser, nb.ID, nil); err != nil {
+			t.Fatal(err)
+		}
+		if got, _ := s.Notebook(LocalUser, nb.ID); got.Guidelines != "Use British spelling." || got.Density != "airy" {
+			t.Fatalf("after undo: %q %q", got.Guidelines, got.Density)
+		}
+		s.db.Exec(s.q(`UPDATE snapshots SET guidelines = NULL, density = NULL WHERE notebook_id = ? AND version = 1`), nb.ID)
+		if _, _, err := s.Restore(LocalUser, nb.ID, 1, nil); err != nil {
+			t.Fatal(err)
+		}
+		if got, _ := s.Notebook(LocalUser, nb.ID); got.Guidelines != "Use British spelling." || got.Density != "airy" {
+			t.Fatalf("restoring a snapshot from before the feature must keep current values: %q %q", got.Guidelines, got.Density)
+		}
+	})
+}
+
 func TestExpectedVersionConflict(t *testing.T) {
 	eachBackend(t, func(t *testing.T, s *Store) {
-		nb, _ := s.CreateNotebook(LocalUser, "T", "clean", "plain", "light")
+		nb, _ := s.CreateNotebook(LocalUser, "T", "clean", "plain", "light", "")
 		stale := 0
 		_, _, err := s.Mutate(LocalUser, nb.ID, &stale, "x", "x", func(nb *Notebook, bs []model.Block) ([]model.Block, error) { return bs, nil })
 		if !errors.Is(err, ErrConflict) {
@@ -115,7 +148,7 @@ func TestExpectedVersionConflict(t *testing.T) {
 
 func TestSnapshotPruning(t *testing.T) {
 	eachBackend(t, func(t *testing.T, s *Store) {
-		nb, _ := s.CreateNotebook(LocalUser, "T", "clean", "plain", "light")
+		nb, _ := s.CreateNotebook(LocalUser, "T", "clean", "plain", "light", "")
 		for range keepSnapshots + 10 {
 			appendText(t, s, nb.ID, "x")
 		}
@@ -129,7 +162,7 @@ func TestSnapshotPruning(t *testing.T) {
 
 func TestSoftDelete(t *testing.T) {
 	eachBackend(t, func(t *testing.T, s *Store) {
-		nb, _ := s.CreateNotebook(LocalUser, "T", "clean", "plain", "light")
+		nb, _ := s.CreateNotebook(LocalUser, "T", "clean", "plain", "light", "")
 		if err := s.Delete(LocalUser, nb.ID); err != nil {
 			t.Fatal(err)
 		}
@@ -144,7 +177,7 @@ func TestSoftDelete(t *testing.T) {
 
 func TestPositionsSortByteOrder(t *testing.T) {
 	eachBackend(t, func(t *testing.T, s *Store) {
-		nb, _ := s.CreateNotebook(LocalUser, "T", "clean", "plain", "light")
+		nb, _ := s.CreateNotebook(LocalUser, "T", "clean", "plain", "light", "")
 		_, _, err := s.Mutate(LocalUser, nb.ID, nil, "x", "x", func(_ *Notebook, _ []model.Block) ([]model.Block, error) {
 			var bs []model.Block
 			for _, pos := range []string{"z1", "a", "Z", "a0b", "_"} {

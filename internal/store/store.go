@@ -108,6 +108,10 @@ var pgMigrations = []string{
 		revoked_at TEXT
 	);
 	ALTER TABLE api_tokens ADD COLUMN grant_id TEXT`,
+	`ALTER TABLE notebooks ADD COLUMN guidelines TEXT NOT NULL DEFAULT '';
+	ALTER TABLE notebooks ADD COLUMN density TEXT NOT NULL DEFAULT 'legacy';
+	ALTER TABLE snapshots ADD COLUMN guidelines TEXT;
+	ALTER TABLE snapshots ADD COLUMN density TEXT`,
 }
 
 var migrations = []string{
@@ -203,6 +207,10 @@ var migrations = []string{
 		revoked_at TEXT
 	);
 	ALTER TABLE api_tokens ADD COLUMN grant_id TEXT;`,
+	`ALTER TABLE notebooks ADD COLUMN guidelines TEXT NOT NULL DEFAULT '';
+	ALTER TABLE notebooks ADD COLUMN density TEXT NOT NULL DEFAULT 'legacy';
+	ALTER TABLE snapshots ADD COLUMN guidelines TEXT;
+	ALTER TABLE snapshots ADD COLUMN density TEXT`,
 }
 
 const LocalUser = "u_local"
@@ -227,16 +235,25 @@ func countBlocks(bs []model.Block) int {
 }
 
 type Notebook struct {
-	ID        string    `json:"id"`
-	Title     string    `json:"title"`
-	Theme     string    `json:"theme"`
-	Paper     string    `json:"paper"`
-	Mode      string    `json:"mode"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Version   int       `json:"version"`
-	UserID    string    `json:"-"`
+	ID         string    `json:"id"`
+	Title      string    `json:"title"`
+	Theme      string    `json:"theme"`
+	Paper      string    `json:"paper"`
+	Mode       string    `json:"mode"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+	Version    int       `json:"version"`
+	UserID     string    `json:"-"`
+	Density    string    `json:"density"`
+	Guidelines string    `json:"-"`
 }
+
+const (
+	DefaultDensity = "comfortable"
+	MaxGuidelines  = 2000
+)
+
+var Densities = []string{"compact", "comfortable", "airy"}
 
 type Snapshot struct {
 	Version   int       `json:"version"`
@@ -364,7 +381,7 @@ func scanNotebook(r scanner) (Notebook, error) {
 	var nb Notebook
 	var c, u string
 	var owner sql.NullString
-	err := r.Scan(&nb.ID, &nb.Title, &nb.Theme, &nb.Paper, &c, &u, &nb.Version, &nb.Mode, &owner)
+	err := r.Scan(&nb.ID, &nb.Title, &nb.Theme, &nb.Paper, &c, &u, &nb.Version, &nb.Mode, &owner, &nb.Guidelines, &nb.Density)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nb, ErrNotFound
 	}
@@ -372,11 +389,14 @@ func scanNotebook(r scanner) (Notebook, error) {
 	return nb, err
 }
 
-const nbCols = `id, title, theme, paper, created_at, updated_at, version, mode, user_id`
+const nbCols = `id, title, theme, paper, created_at, updated_at, version, mode, user_id, guidelines, density`
 
-func (s *Store) CreateNotebook(userID, title, theme, paper, mode string) (Notebook, error) {
+func (s *Store) CreateNotebook(userID, title, theme, paper, mode, density string) (Notebook, error) {
 	now := time.Now()
-	nb := Notebook{ID: model.NewID("n_"), Title: title, Theme: theme, Paper: paper, Mode: mode, CreatedAt: now, UpdatedAt: now, Version: 1, UserID: userID}
+	if density == "" {
+		density = DefaultDensity
+	}
+	nb := Notebook{ID: model.NewID("n_"), Title: title, Theme: theme, Paper: paper, Mode: mode, CreatedAt: now, UpdatedAt: now, Version: 1, UserID: userID, Density: density}
 	if userID == "" {
 		return nb, errors.New("internal error: notebook without an owner")
 	}
@@ -392,7 +412,7 @@ func (s *Store) CreateNotebook(userID, title, theme, paper, mode string) (Notebo
 		return nb, err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(s.q(`INSERT INTO notebooks (`+nbCols+`) VALUES (?,?,?,?,?,?,?,?,?)`), nb.ID, title, theme, paper, ts(now), ts(now), 1, mode, userID); err != nil {
+	if _, err := tx.Exec(s.q(`INSERT INTO notebooks (`+nbCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?)`), nb.ID, title, theme, paper, ts(now), ts(now), 1, mode, userID, "", density); err != nil {
 		return nb, err
 	}
 	if err := s.snapshot(tx, nb, nil, 1, "create_notebook", "created notebook"); err != nil {
@@ -514,7 +534,7 @@ func (s *Store) mutate(userID, id string, expected *int, tool, summary string, b
 	}
 	nb.Version++
 	nb.UpdatedAt = now
-	if _, err := tx.Exec(s.q(`UPDATE notebooks SET title = ?, theme = ?, paper = ?, mode = ?, updated_at = ?, version = ? WHERE id = ?`), nb.Title, nb.Theme, nb.Paper, nb.Mode, ts(now), nb.Version, id); err != nil {
+	if _, err := tx.Exec(s.q(`UPDATE notebooks SET title = ?, theme = ?, paper = ?, mode = ?, guidelines = ?, density = ?, updated_at = ?, version = ? WHERE id = ?`), nb.Title, nb.Theme, nb.Paper, nb.Mode, nb.Guidelines, nb.Density, ts(now), nb.Version, id); err != nil {
 		return nb, nil, err
 	}
 	if base == 0 {
@@ -575,8 +595,8 @@ func (s *Store) snapshot(tx *sql.Tx, nb Notebook, bs []model.Block, base int, to
 		sb = append(sb, snapBlock{b.ID, b.Type, b.Position, b.Data})
 	}
 	js, _ := json.Marshal(sb)
-	if _, err := tx.Exec(s.q(`INSERT INTO snapshots (notebook_id, version, base, blocks, theme, paper, mode, tool_name, summary, timestamp) VALUES (?,?,?,?,?,?,?,?,?,?)`),
-		nb.ID, nb.Version, base, string(js), nb.Theme, nb.Paper, nb.Mode, tool, summary, ts(time.Now())); err != nil {
+	if _, err := tx.Exec(s.q(`INSERT INTO snapshots (notebook_id, version, base, blocks, theme, paper, mode, guidelines, density, tool_name, summary, timestamp) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`),
+		nb.ID, nb.Version, base, string(js), nb.Theme, nb.Paper, nb.Mode, nb.Guidelines, nb.Density, tool, summary, ts(time.Now())); err != nil {
 		return err
 	}
 	_, err := tx.Exec(s.q(`DELETE FROM snapshots WHERE notebook_id = ? AND version <= ?`), nb.ID, nb.Version-keepSnapshots)
@@ -614,8 +634,9 @@ func (s *Store) restore(userID, id string, version int, expected *int, tool stri
 		return Notebook{}, nil, err
 	}
 	var js, theme, paper, mode string
+	var guidelines, density sql.NullString
 	var base int
-	err := s.db.QueryRow(s.q(`SELECT blocks, theme, paper, mode, base FROM snapshots WHERE notebook_id = ? AND version = ?`), id, version).Scan(&js, &theme, &paper, &mode, &base)
+	err := s.db.QueryRow(s.q(`SELECT blocks, theme, paper, mode, guidelines, density, base FROM snapshots WHERE notebook_id = ? AND version = ?`), id, version).Scan(&js, &theme, &paper, &mode, &guidelines, &density, &base)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Notebook{}, nil, fmt.Errorf("%w: version %d of notebook %s (only the last %d versions are kept; see list_versions)", ErrNotFound, version, id, keepSnapshots)
 	}
@@ -633,6 +654,12 @@ func (s *Store) restore(userID, id string, version int, expected *int, tool stri
 	}
 	return s.mutate(userID, id, expected, tool, fmt.Sprintf("restored version %d", version), base, func(nb *Notebook, _ []model.Block) ([]model.Block, error) {
 		nb.Theme, nb.Paper, nb.Mode = theme, paper, mode
+		if guidelines.Valid {
+			nb.Guidelines = guidelines.String
+		}
+		if density.Valid {
+			nb.Density = density.String
+		}
 		return restored, nil
 	})
 }

@@ -182,7 +182,7 @@ func signatures(nb store.Notebook, bs []model.Block, r *layout.Result) []string 
 	hs := make([]*strings.Builder, r.PageCount)
 	for i := range hs {
 		hs[i] = &strings.Builder{}
-		fmt.Fprintf(hs[i], "%s|%s|%s|%s|%d|", nb.Title, nb.Theme, nb.Paper, nb.Mode, r.PageCount)
+		fmt.Fprintf(hs[i], "%s|%s|%s|%s|%s|%d|", nb.Title, nb.Theme, nb.Paper, nb.Mode, nb.Density, r.PageCount)
 	}
 	for i, p := range r.Blocks {
 		for pg := max(p.Page, 1); pg <= min(max(p.EndPage, p.Page), r.PageCount); pg++ {

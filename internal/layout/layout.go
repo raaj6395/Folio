@@ -37,6 +37,8 @@ type Pos struct {
 	YMM     float64 `json:"y_mm"`
 	EndPage int     `json:"end_page"`
 	EndYMM  float64 `json:"end_y_mm"`
+	Level   int     `json:"level,omitempty"`
+	XMM     float64 `json:"-"`
 }
 
 type Result struct {
@@ -48,6 +50,7 @@ type Result struct {
 	PageFill     []float64     `json:"page_fill_pct"`
 	Nested       []Pos         `json:"nested,omitempty"`
 	Warnings     []string      `json:"warnings"`
+	Issues       []Issue       `json:"issues"`
 	Elapsed      time.Duration `json:"-"`
 }
 
@@ -163,7 +166,7 @@ var templateHash = func() string {
 const renderVersion = "r3"
 
 func key(nb store.Notebook) string {
-	return fmt.Sprintf("v%d-%s-%s-%s-t%s", nb.Version, nb.Theme, nb.Paper, nb.Mode, templateHash)
+	return fmt.Sprintf("v%d-%s-%s-%s-%s-t%s", nb.Version, nb.Theme, nb.Paper, nb.Mode, nb.Density, templateHash)
 }
 
 func (b *Builder) Build(ctx context.Context, nb store.Notebook, blocks []model.Block) (*Result, error) {
@@ -196,7 +199,7 @@ func (b *Builder) build(ctx context.Context, nb store.Notebook, blocks []model.B
 	if err != nil {
 		return nil, err
 	}
-	doc := map[string]any{"title": nb.Title, "theme": nb.Theme, "paper": nb.Paper, "mode": nb.Mode, "blocks": docs}
+	doc := map[string]any{"title": nb.Title, "theme": nb.Theme, "paper": nb.Paper, "mode": nb.Mode, "density": nb.Density, "blocks": docs}
 	js, _ := json.Marshal(doc)
 	if err := os.WriteFile(filepath.Join(dir, "doc.json"), js, 0o644); err != nil {
 		return nil, err
@@ -211,7 +214,7 @@ func (b *Builder) build(ctx context.Context, nb store.Notebook, blocks []model.B
 	}()
 	go func() {
 		defer wg.Done()
-		raw, qErr = b.typst(ctx, dir, "eval", `query(<blockpos>).map(it => (id: it.value.id, k: it.value.k, page: it.location().page(), y: it.location().position().y / 1pt))`, "--in", "main.typ")
+		raw, qErr = b.typst(ctx, dir, "eval", `query(<blockpos>).map(it => (id: it.value.id, k: it.value.k, page: it.location().page(), y: it.location().position().y / 1pt, x: it.location().position().x / 1pt))`, "--in", "main.typ")
 	}()
 	wg.Wait()
 	if err := errors.Join(pdfErr, qErr); err != nil {
@@ -221,8 +224,12 @@ func (b *Builder) build(ctx context.Context, nb store.Notebook, blocks []model.B
 	if err := json.Unmarshal(raw, &marks); err != nil {
 		return nil, fmt.Errorf("parsing typst layout output: %w", err)
 	}
-	r := analyze(marks, blocks)
-	r.Warnings = append(r.Warnings, dwarns...)
+	r := analyze(marks, blocks, nb.Density)
+	for _, is := range dwarns {
+		is.Page = r.Page(is.Blocks[0])
+		r.Issues = append(r.Issues, is)
+		r.Warnings = append(r.Warnings, is.String())
+	}
 	r.Key, r.PDF = key(nb), filepath.Join(dir, "out.pdf")
 	r.Elapsed = time.Since(start)
 	js, _ = json.Marshal(r)

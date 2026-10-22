@@ -60,9 +60,9 @@ const (
 
 var sizeFrac = map[string]float64{"full": 1, "half": 0.5, "small": 0.35}
 
-func (b *Builder) docBlocks(ctx context.Context, dir string, style diagram.Style, blocks []model.Block) ([]map[string]any, []string, error) {
+func (b *Builder) docBlocks(ctx context.Context, dir string, style diagram.Style, blocks []model.Block) ([]map[string]any, []Issue, error) {
 	out := make([]map[string]any, len(blocks))
-	var warns []string
+	var warns []Issue
 	var walk func(m map[string]any) error
 	walk = func(m map[string]any) error {
 		for _, side := range []string{"left", "right"} {
@@ -87,7 +87,8 @@ func (b *Builder) docBlocks(ctx context.Context, dir string, style diagram.Style
 		m["width_mm"] = w
 		m["height_mm"] = h
 		if pt < minReadablePt {
-			warns = append(warns, fmt.Sprintf("diagram %s is scaled down so its labels render at ~%.1fpt (unreadable below %.0fpt); simplify it, split it in two, change direction, or use size \"full\"", id, pt, minReadablePt))
+			warns = append(warns, Issue{Check: "unreadable_diagram", Blocks: []string{id}, Problem: fmt.Sprintf("diagram %s is scaled down so its labels render at ~%.1fpt (unreadable below %.0fpt)", id, pt, minReadablePt),
+				Fix: `simplify it (at most ~6 nodes), split it in two, change direction, or use size "full"`})
 		}
 		return nil
 	}

@@ -43,7 +43,7 @@ func TestViewer(t *testing.T) {
 	}
 	defer st.Close()
 	lb, _ := layout.New(home)
-	nb, _ := st.CreateNotebook(store.LocalUser, "Viewer <test>", "clean", "plain", "light")
+	nb, _ := st.CreateNotebook(store.LocalUser, "Viewer <test>", "clean", "plain", "light", "")
 	addPara(t, st, nb.ID, "first")
 	srv := httptest.NewServer(New(st, lb, Local, false))
 	defer srv.Close()
@@ -166,4 +166,13 @@ func get(t *testing.T, url string) string {
 		t.Fatalf("%s: %d %s", url, resp.StatusCode, b.String())
 	}
 	return b.String()
+}
+
+func TestSignaturesFollowDensity(t *testing.T) {
+	r := &layout.Result{PageCount: 1, Blocks: []layout.Pos{}}
+	a := signatures(store.Notebook{Density: "comfortable"}, nil, r)
+	b := signatures(store.Notebook{Density: "airy"}, nil, r)
+	if a[0] == b[0] {
+		t.Fatal("page fingerprints must change when the density changes")
+	}
 }

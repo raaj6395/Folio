@@ -306,6 +306,35 @@ type Table struct {
 	Columns []string   `json:"columns"`
 	Rows    [][]string `json:"rows"`
 	Caption string     `json:"caption,omitempty"`
+	Align   []string   `json:"align,omitempty"`
+}
+
+var alignments = []string{"left", "center", "right"}
+
+var numericCell = regexp.MustCompile(`^[-+]?[$€£₹]?\d[\d,]*(\.\d+)?\s*[%x×]?$`)
+
+func (t *Table) alignments() []string {
+	if len(t.Align) > 0 {
+		return t.Align
+	}
+	out := make([]string, len(t.Columns))
+	for c := range t.Columns {
+		out[c] = "left"
+		numbers := 0
+		for _, r := range t.Rows {
+			cell := strings.TrimSpace(plain(r[c]))
+			if numericCell.MatchString(cell) {
+				numbers++
+			} else if cell != "" && cell != "-" && cell != "—" {
+				numbers = -1
+				break
+			}
+		}
+		if numbers > 0 {
+			out[c] = "right"
+		}
+	}
+	return out
 }
 
 func (t *Table) validate() error {
@@ -323,6 +352,14 @@ func (t *Table) validate() error {
 			return fmt.Errorf("row %d has %d cells, expected %d (columns: %s)", i, len(r), len(t.Columns), strings.Join(t.Columns, ", "))
 		}
 	}
+	if len(t.Align) > 0 && len(t.Align) != len(t.Columns) {
+		return fmt.Errorf("align has %d entries, expected one per column (%d)", len(t.Align), len(t.Columns))
+	}
+	for i, a := range t.Align {
+		if !slices.Contains(alignments, a) {
+			return fmt.Errorf(`align[%d] must be "left", "center" or "right", got %q`, i, a)
+		}
+	}
 	return nil
 }
 func (t *Table) doc() map[string]any {
@@ -338,7 +375,7 @@ func (t *Table) doc() map[string]any {
 		}
 		rows = append(rows, row)
 	}
-	return map[string]any{"columns": cols, "rows": rows, "caption": ParseInline(t.Caption)}
+	return map[string]any{"columns": cols, "rows": rows, "caption": ParseInline(t.Caption), "align": t.alignments()}
 }
 func (t *Table) summary() string {
 	return fmt.Sprintf("table: %dx%d %s", len(t.Columns), len(t.Rows), strings.Join(t.Columns, "/"))
@@ -434,7 +471,7 @@ func (b Block) DiagramSource() (src, size string, ok bool) {
 	return d.Source, d.Size, true
 }
 
-var nestable = []string{"paragraph", "bullets", "numbered", "callout", "code", "diagram", "qa"}
+var nestable = []string{"heading", "paragraph", "bullets", "numbered", "callout", "code", "diagram", "qa"}
 
 var validID = regexp.MustCompile(`^b_[a-z2-7]{8}$`)
 
@@ -458,6 +495,9 @@ func (tc *TwoColumn) validate() error {
 			}
 			if !slices.Contains(nestable, b.Type) {
 				return fmt.Errorf("%s[%d]: type %s is not allowed inside two_column; allowed: %s", side.name, i, b.Type, strings.Join(nestable, ", "))
+			}
+			if b.Type == "heading" && b.decode().(*Heading).Level != 3 {
+				return fmt.Errorf("%s[%d] (heading): only level 3 headings are allowed inside two_column", side.name, i)
 			}
 			if src, size, _ := b.DiagramSource(); src != "" && size == "full" {
 				return fmt.Errorf(`%s[%d] (diagram): size must be "half" or "small" inside two_column`, side.name, i)

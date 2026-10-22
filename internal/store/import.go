@@ -8,6 +8,7 @@ import (
 
 type rawNotebook struct {
 	ID, Title, Theme, Paper, Mode, CreatedAt, UpdatedAt string
+	Guidelines, Density                                 string
 	Version                                             int
 	DeletedAt                                           sql.NullString
 }
@@ -19,6 +20,7 @@ type rawBlock struct {
 type rawSnapshot struct {
 	Version, Base                                            int
 	Blocks, Theme, Paper, Mode, ToolName, Summary, Timestamp string
+	Guidelines, Density                                      sql.NullString
 }
 
 type ImportResult struct {
@@ -28,14 +30,14 @@ type ImportResult struct {
 }
 
 func (s *Store) ImportFrom(src *Store, ownerID string, includeDeleted, dryRun bool) ([]ImportResult, error) {
-	rows, err := src.db.Query(`SELECT id, title, theme, paper, mode, created_at, updated_at, version, deleted_at FROM notebooks ORDER BY created_at`)
+	rows, err := src.db.Query(`SELECT id, title, theme, paper, mode, created_at, updated_at, version, deleted_at, guidelines, density FROM notebooks ORDER BY created_at`)
 	if err != nil {
 		return nil, err
 	}
 	var nbs []rawNotebook
 	for rows.Next() {
 		var n rawNotebook
-		if err := rows.Scan(&n.ID, &n.Title, &n.Theme, &n.Paper, &n.Mode, &n.CreatedAt, &n.UpdatedAt, &n.Version, &n.DeletedAt); err != nil {
+		if err := rows.Scan(&n.ID, &n.Title, &n.Theme, &n.Paper, &n.Mode, &n.CreatedAt, &n.UpdatedAt, &n.Version, &n.DeletedAt, &n.Guidelines, &n.Density); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -84,13 +86,13 @@ func (s *Store) importOne(src *Store, n rawNotebook, ownerID string) error {
 	}
 	rows.Close()
 	var snaps []rawSnapshot
-	rows, err = src.db.Query(`SELECT version, base, blocks, theme, paper, mode, tool_name, summary, timestamp FROM snapshots WHERE notebook_id = ?`, n.ID)
+	rows, err = src.db.Query(`SELECT version, base, blocks, theme, paper, mode, guidelines, density, tool_name, summary, timestamp FROM snapshots WHERE notebook_id = ?`, n.ID)
 	if err != nil {
 		return err
 	}
 	for rows.Next() {
 		var sn rawSnapshot
-		if err := rows.Scan(&sn.Version, &sn.Base, &sn.Blocks, &sn.Theme, &sn.Paper, &sn.Mode, &sn.ToolName, &sn.Summary, &sn.Timestamp); err != nil {
+		if err := rows.Scan(&sn.Version, &sn.Base, &sn.Blocks, &sn.Theme, &sn.Paper, &sn.Mode, &sn.Guidelines, &sn.Density, &sn.ToolName, &sn.Summary, &sn.Timestamp); err != nil {
 			rows.Close()
 			return err
 		}
@@ -107,8 +109,8 @@ func (s *Store) importOne(src *Store, n rawNotebook, ownerID string) error {
 	}
 	defer tx.Rollback()
 	owner := sql.NullString{String: ownerID, Valid: ownerID != ""}
-	if _, err := tx.Exec(s.q(`INSERT INTO notebooks (id, title, theme, paper, mode, created_at, updated_at, version, deleted_at, user_id) VALUES (?,?,?,?,?,?,?,?,?,?)`),
-		n.ID, n.Title, n.Theme, n.Paper, n.Mode, n.CreatedAt, n.UpdatedAt, n.Version, n.DeletedAt, owner); err != nil {
+	if _, err := tx.Exec(s.q(`INSERT INTO notebooks (id, title, theme, paper, mode, created_at, updated_at, version, deleted_at, user_id, guidelines, density) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`),
+		n.ID, n.Title, n.Theme, n.Paper, n.Mode, n.CreatedAt, n.UpdatedAt, n.Version, n.DeletedAt, owner, n.Guidelines, n.Density); err != nil {
 		return err
 	}
 	for _, b := range blocks {
@@ -118,8 +120,8 @@ func (s *Store) importOne(src *Store, n rawNotebook, ownerID string) error {
 		}
 	}
 	for _, sn := range snaps {
-		if _, err := tx.Exec(s.q(`INSERT INTO snapshots (notebook_id, version, base, blocks, theme, paper, mode, tool_name, summary, timestamp) VALUES (?,?,?,?,?,?,?,?,?,?)`),
-			n.ID, sn.Version, sn.Base, sn.Blocks, sn.Theme, sn.Paper, sn.Mode, sn.ToolName, sn.Summary, sn.Timestamp); err != nil {
+		if _, err := tx.Exec(s.q(`INSERT INTO snapshots (notebook_id, version, base, blocks, theme, paper, mode, guidelines, density, tool_name, summary, timestamp) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`),
+			n.ID, sn.Version, sn.Base, sn.Blocks, sn.Theme, sn.Paper, sn.Mode, sn.Guidelines, sn.Density, sn.ToolName, sn.Summary, sn.Timestamp); err != nil {
 			return fmt.Errorf("snapshot v%d: %w", sn.Version, err)
 		}
 	}

@@ -31,6 +31,7 @@ type NotebookInfo struct {
 	Theme      string    `json:"theme"`
 	Paper      string    `json:"paper"`
 	Mode       string    `json:"mode"`
+	Density    string    `json:"density"`
 	Version    int       `json:"version"`
 	PageCount  int       `json:"page_count"`
 	BlockCount int       `json:"block_count"`
@@ -42,7 +43,7 @@ func (s *Server) info(ctx context.Context, nb store.Notebook) (NotebookInfo, err
 	if err != nil {
 		return NotebookInfo{}, err
 	}
-	info := NotebookInfo{ID: nb.ID, Title: nb.Title, Theme: nb.Theme, Paper: nb.Paper, Mode: nb.Mode, Version: nb.Version, BlockCount: len(bs), UpdatedAt: nb.UpdatedAt}
+	info := NotebookInfo{ID: nb.ID, Title: nb.Title, Theme: nb.Theme, Paper: nb.Paper, Mode: nb.Mode, Density: nb.Density, Version: nb.Version, BlockCount: len(bs), UpdatedAt: nb.UpdatedAt}
 	if r, err := s.lb.Build(ctx, nb, bs); err == nil {
 		info.PageCount = r.PageCount
 	}
@@ -50,10 +51,11 @@ func (s *Server) info(ctx context.Context, nb store.Notebook) (NotebookInfo, err
 }
 
 type createIn struct {
-	Title string `json:"title" jsonschema:"Notebook title, shown in the page header"`
-	Theme string `json:"theme,omitempty" jsonschema:"Visual theme; default clean. See list_themes"`
-	Paper string `json:"paper,omitempty" jsonschema:"Paper background: plain, ruled, dotted or grid. Defaults to the theme's paper"`
-	Mode  string `json:"mode,omitempty" jsonschema:"dark (default) or light. Use light only when the user asks for a light/white look or wants to print"`
+	Title   string `json:"title" jsonschema:"Notebook title, shown in the page header"`
+	Theme   string `json:"theme,omitempty" jsonschema:"Visual theme; default clean. See list_themes"`
+	Paper   string `json:"paper,omitempty" jsonschema:"Paper background: plain, ruled, dotted or grid. Defaults to the theme's paper"`
+	Mode    string `json:"mode,omitempty" jsonschema:"dark (default) or light. Use light only when the user asks for a light/white look or wants to print"`
+	Density string `json:"density,omitempty" jsonschema:"Spacing: compact, comfortable (default) or airy. The renderer adds gaps before headings and around boxes; no spacers needed"`
 }
 
 type appendIn struct {
@@ -76,8 +78,34 @@ type Outline struct {
 	Version    int            `json:"version"`
 	Theme      string         `json:"theme"`
 	Mode       string         `json:"mode"`
+	Density    string         `json:"density"`
 	PageCount  int            `json:"page_count"`
+	Guidelines string         `json:"notebook_guidelines,omitempty"`
 	Blocks     []OutlineEntry `json:"blocks"`
+}
+
+type guidelinesIn struct {
+	NotebookID      string `json:"notebook_id" jsonschema:"ID of the notebook"`
+	Text            string `json:"text" jsonschema:"The user's own layout and style preferences for this notebook, max 2000 characters. Empty clears them"`
+	ExpectedVersion *int   `json:"expected_version,omitempty" jsonschema:"Reject unless the notebook is at this version"`
+}
+
+type GuidelinesOut struct {
+	NotebookID string `json:"notebook_id"`
+	Version    int    `json:"version"`
+	Guidelines string `json:"notebook_guidelines"`
+}
+
+type checkIn struct {
+	NotebookID string `json:"notebook_id" jsonschema:"ID of the notebook"`
+	Pages      []int  `json:"pages,omitempty" jsonschema:"1-indexed pages to check; default all"`
+}
+
+type CheckOut struct {
+	Version int                 `json:"version"`
+	Density string              `json:"density"`
+	Score   int                 `json:"score"`
+	Pages   []layout.PageReport `json:"pages"`
 }
 
 type renderIn struct {
@@ -117,6 +145,7 @@ type setThemeIn struct {
 	Theme           string `json:"theme" jsonschema:"Theme name from list_themes"`
 	Paper           string `json:"paper,omitempty" jsonschema:"plain, ruled, dotted or grid; default: the theme's paper"`
 	Mode            string `json:"mode,omitempty" jsonschema:"dark or light; omit to keep the current mode"`
+	Density         string `json:"density,omitempty" jsonschema:"compact, comfortable or airy; omit to keep the current spacing"`
 	ExpectedVersion *int   `json:"expected_version,omitempty" jsonschema:"Reject unless the notebook is at this version"`
 }
 
@@ -183,7 +212,13 @@ func (s *Server) register(m *mcp.Server) {
 			if err := validMode(in.Mode); err != nil {
 				return nil, NotebookInfo{}, err
 			}
-			nb, err := s.st.CreateNotebook(userOf(ctx), in.Title, in.Theme, in.Paper, in.Mode)
+			if in.Density == "" {
+				in.Density = store.DefaultDensity
+			}
+			if err := validDensity(in.Density); err != nil {
+				return nil, NotebookInfo{}, err
+			}
+			nb, err := s.st.CreateNotebook(userOf(ctx), in.Title, in.Theme, in.Paper, in.Mode, in.Density)
 			if err != nil {
 				return nil, NotebookInfo{}, err
 			}
@@ -215,7 +250,7 @@ func (s *Server) register(m *mcp.Server) {
 			if err != nil {
 				return nil, Outline{}, err
 			}
-			out := Outline{NotebookID: nb.ID, Title: nb.Title, Version: nb.Version, Theme: nb.Theme, Mode: nb.Mode, PageCount: r.PageCount, Blocks: []OutlineEntry{}}
+			out := Outline{NotebookID: nb.ID, Title: nb.Title, Version: nb.Version, Theme: nb.Theme, Mode: nb.Mode, Density: nb.Density, PageCount: r.PageCount, Guidelines: nb.Guidelines, Blocks: []OutlineEntry{}}
 			for _, b := range bs {
 				out.Blocks = append(out.Blocks, OutlineEntry{ID: b.ID, Type: b.Type, Page: r.Page(b.ID), Summary: b.Summary()})
 				for _, k := range b.Children() {
@@ -361,7 +396,7 @@ func (s *Server) register(m *mcp.Server) {
 			return nil, ThemesOut{Themes: layout.Themes, Papers: papers, Modes: layout.Modes}, nil
 		})
 
-	addTool(s, m, "set_theme", "Change a notebook's theme, paper and/or mode (dark or light). If paper is omitted, the theme's default paper is used; if mode is omitted it stays as it is. To only switch dark/light, pass the current theme and the new mode.",
+	addTool(s, m, "set_theme", "Change a notebook's theme, paper, mode (dark or light) and/or density (spacing). If paper is omitted, the theme's default paper is used; mode and density stay as they are unless given. To only switch dark/light or density, pass the current theme too.",
 		func(ctx context.Context, _ *mcp.CallToolRequest, in setThemeIn) (*mcp.CallToolResult, MutationResult, error) {
 			if err := validTheme(in.Theme); err != nil {
 				return nil, MutationResult{}, err
@@ -377,11 +412,19 @@ func (s *Server) register(m *mcp.Server) {
 					return nil, MutationResult{}, err
 				}
 			}
-			res, err := s.mutate(ctx, in.NotebookID, in.ExpectedVersion, "set_theme", fmt.Sprintf("theme %s, paper %s, mode %s", in.Theme, in.Paper, in.Mode),
+			if in.Density != "" {
+				if err := validDensity(in.Density); err != nil {
+					return nil, MutationResult{}, err
+				}
+			}
+			res, err := s.mutate(ctx, in.NotebookID, in.ExpectedVersion, "set_theme", fmt.Sprintf("theme %s, paper %s, mode %s, density %s", in.Theme, in.Paper, in.Mode, in.Density),
 				func(nb *store.Notebook, bs []model.Block) ([]model.Block, []string, error) {
 					nb.Theme, nb.Paper = in.Theme, in.Paper
 					if in.Mode != "" {
 						nb.Mode = in.Mode
+					}
+					if in.Density != "" {
+						nb.Density = in.Density
 					}
 					return bs, nil, nil
 				})
@@ -401,6 +444,58 @@ func (s *Server) register(m *mcp.Server) {
 				out.Hint = "The viewer is not running. Ask the user to run `folio serve` in a terminal, then open the URL."
 			}
 			return nil, out, nil
+		})
+
+	addTool(s, m, "check_layout", "Score a notebook's layout (0-100) and list every layout issue per page with block IDs and a concrete fix. Call it before saying you are done.",
+		func(ctx context.Context, _ *mcp.CallToolRequest, in checkIn) (*mcp.CallToolResult, CheckOut, error) {
+			nb, bs, err := s.load(ctx, in.NotebookID)
+			if err != nil {
+				return nil, CheckOut{}, err
+			}
+			r, err := s.lb.Build(ctx, nb, bs)
+			if err != nil {
+				return nil, CheckOut{}, err
+			}
+			score, pages := r.Report()
+			if len(in.Pages) > 0 {
+				var sel []layout.PageReport
+				total := 0
+				for _, p := range in.Pages {
+					if p < 1 || p > r.PageCount {
+						return nil, CheckOut{}, fmt.Errorf("page %d does not exist; the notebook has %d page(s)", p, r.PageCount)
+					}
+					sel = append(sel, pages[p-1])
+					total += pages[p-1].Score
+				}
+				pages, score = sel, (total+len(sel)/2)/len(sel)
+			}
+			return nil, CheckOut{Version: nb.Version, Density: nb.Density, Score: score, Pages: pages}, nil
+		})
+
+	addTool(s, m, "set_notebook_guidelines", "Save the user's own layout/style preferences on a notebook (max 2000 characters). Every agent then sees them in get_outline and in its first write. Versioned like any change.",
+		func(ctx context.Context, _ *mcp.CallToolRequest, in guidelinesIn) (*mcp.CallToolResult, GuidelinesOut, error) {
+			text := strings.TrimSpace(in.Text)
+			if n := len([]rune(text)); n > store.MaxGuidelines {
+				return nil, GuidelinesOut{}, fmt.Errorf("guidelines are %d characters, max %d", n, store.MaxGuidelines)
+			}
+			nb, _, err := s.st.Mutate(userOf(ctx), in.NotebookID, in.ExpectedVersion, "set_notebook_guidelines", "updated notebook guidelines",
+				func(nb *store.Notebook, bs []model.Block) ([]model.Block, error) {
+					nb.Guidelines = text
+					return bs, nil
+				})
+			if err != nil {
+				return nil, GuidelinesOut{}, err
+			}
+			return nil, GuidelinesOut{NotebookID: nb.ID, Version: nb.Version, Guidelines: nb.Guidelines}, nil
+		})
+
+	addTool(s, m, "get_notebook_guidelines", "Read the user's saved layout/style preferences for a notebook.",
+		func(ctx context.Context, _ *mcp.CallToolRequest, in notebookIn) (*mcp.CallToolResult, GuidelinesOut, error) {
+			nb, err := s.st.Notebook(userOf(ctx), in.NotebookID)
+			if err != nil {
+				return nil, GuidelinesOut{}, err
+			}
+			return nil, GuidelinesOut{NotebookID: nb.ID, Version: nb.Version, Guidelines: nb.Guidelines}, nil
 		})
 
 	addTool(s, m, "get_authoring_guide", "How to write good Folio notes: every block type with an example, and style guidance. Read it once before writing.",

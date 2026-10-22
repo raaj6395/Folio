@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/jsonschema-go/jsonschema"
@@ -21,18 +22,34 @@ import (
 	"github.com/raaj6395/folio/internal/store"
 )
 
-const instructions = `Folio typesets study notes onto A4 pages.
+const instructions = `Folio typesets study notes onto A4 pages. You write structured blocks; Folio measures text, flows it across pages and handles breaks. Never think in coordinates.
 
-You write structured blocks (headings, paragraphs, lists, callouts, code, tables, diagrams, Q&A cards); Folio measures text, flows it across pages and handles page breaks. Never think in coordinates.
+Notebooks are dark by default; pass mode "light" to create_notebook (or set_theme) only when the user asks for light/printing. Density (compact, comfortable default, airy) adds gaps automatically.
+Every block has a stable ID (b_xxxxxxxx); use IDs for small targeted edits instead of rewriting.
 
-Notebooks are dark mode by default. If the user asks for light mode (white pages, printing), pass mode "light" to create_notebook, or call set_theme with mode "light" to switch an existing notebook.
+Layout rules (full version in get_authoring_guide):
+- Each H1 section fits on one page; put a page_break before every H1 except the first.
+- Aim for 60-95% page fill. Under 50% before a page_break/new H1, or a few % spilling onto the next page, are problems to fix.
+- Don't stack everything top to bottom: put related things side by side with two_column (half diagram left, steps/bullets/callout right; a column may start with a level-3 heading). Pair short callouts.
+- Spacing comes from density; don't add spacers before every H2. In "legacy" notebooks switch density to comfortable via set_theme.
+- Diagrams: at most ~6 nodes, 1-3 word labels, at most ~40% of the page tall. Prefer size half inside two_column (about 3 nodes across); chains of 4+ nodes go full width with direction: right.
+- Short paragraphs (2-4 sentences); tables for comparisons, lists for enumerations; end each section with 1-2 qa or fill_in.
+- Text is left-aligned; tables align text left and numbers right automatically.
 
-Every block has a stable ID (b_xxxxxxxx). Use IDs for small targeted edits instead of rewriting a notebook.
-
-Recommended workflow: get_authoring_guide once → create_notebook → plan an outline → append_blocks section by section → read the layout summary each write returns → render_pages for a page or two to check how it looks → fix problems → export_pdf.`
+Workflow:
+1. get_authoring_guide if you haven't, then create_notebook (or list_notebooks).
+2. Write a whole section per append_blocks call.
+3. Read each write's layout, warnings and layout_hints; fix issues before moving on.
+4. Before saying done: check_layout, fix what it reports, then render_pages once on the changed pages (max 2).
+5. The user's notebook_guidelines (get_outline, first write response, get_notebook_guidelines) override these rules; save lasting preferences with set_notebook_guidelines.`
 
 //go:embed guide.md
-var guide string
+var guideBody string
+
+//go:embed layout_rules.md
+var layoutRules string
+
+var guide = guideBody + "\n\n# Layout rules\n\n" + layoutRules
 
 var papers = []string{"plain", "ruled", "dotted", "grid"}
 
@@ -43,6 +60,25 @@ type Server struct {
 	publicURL string
 	localUser string
 	renders   *account.Limiter
+	seenMu    sync.Mutex
+	seen      map[string]time.Time
+}
+
+const sessionWindow = 30 * time.Minute
+
+func (s *Server) firstWrite(user, notebook string) bool {
+	s.seenMu.Lock()
+	defer s.seenMu.Unlock()
+	now := time.Now()
+	for k, t := range s.seen {
+		if now.Sub(t) > sessionWindow {
+			delete(s.seen, k)
+		}
+	}
+	k := user + "|" + notebook
+	_, ok := s.seen[k]
+	s.seen[k] = now
+	return !ok
 }
 
 func (s *Server) allowRender(ctx context.Context) error {
@@ -58,11 +94,11 @@ const blockDescription = `One block. Set "type" plus that type's fields:
 - bullets / numbered: items: [{text, children?: [items]}]; nesting depth max 3, max 40 items total.
 - callout: variant (note|tip|warning|definition|key_point), title? (string), body: [string, ...] one string per paragraph.
 - code: language (e.g. "go", "python", "" for plain), code (max 80 lines), caption?.
-- table: columns: [2-6 header strings], rows: [[cell, ...], ...] (max 25 rows, each row exactly len(columns) cells), caption?.
+- table: columns: [2-6 header strings], rows: [[cell, ...], ...] (max 25 rows, each row exactly len(columns) cells), caption?, align? ([left|center|right per column]; default left, numeric columns right).
 - qa: question, answer, hide_answer? (bool; true prints the answer upside down at the page bottom for self-testing).
 - fill_in: prompt, lines (1-15). Blank ruled lines for the reader to write on.
 - spacer: size (small|medium|large). Vertical space.
-- two_column: left: [blocks], right: [blocks]. Side-by-side columns. Nested blocks may be paragraph, bullets, numbered, callout, code, diagram (size half or small) or qa; they get their own IDs, which update_block, delete_blocks and read_blocks accept.
+- two_column: left: [blocks], right: [blocks]. Side-by-side columns. Nested blocks may be heading (level 3 only), paragraph, bullets, numbered, callout, code, diagram (size half or small) or qa; they get their own IDs, which update_block, delete_blocks and read_blocks accept.
 - diagram: source (D2 language, e.g. "client -> server: request"), size? (full|half|small, default full), caption?. Compile errors are returned with line numbers; use preview_diagram to check one first.
 - divider: no fields. Horizontal rule.
 - page_break: no fields. Starts a new page.
@@ -146,7 +182,7 @@ func friendly(err error) error {
 }
 
 func New(st *store.Store, lb *layout.Builder, home, publicURL, localUser string) *mcp.Server {
-	srv := &Server{st: st, lb: lb, home: home, publicURL: strings.TrimSuffix(publicURL, "/"), localUser: localUser, renders: account.NewLimiter(30, time.Minute)}
+	srv := &Server{st: st, lb: lb, home: home, publicURL: strings.TrimSuffix(publicURL, "/"), localUser: localUser, renders: account.NewLimiter(30, time.Minute), seen: map[string]time.Time{}}
 	s := mcp.NewServer(&mcp.Implementation{Name: "folio", Version: "0.1.0"}, &mcp.ServerOptions{Instructions: instructions})
 	srv.register(s)
 	srv.registerEdit(s)
@@ -172,10 +208,12 @@ type LayoutSummary struct {
 }
 
 type MutationResult struct {
-	Version         int           `json:"version"`
-	ChangedBlockIDs []string      `json:"changed_block_ids"`
-	Layout          LayoutSummary `json:"layout"`
-	Warnings        []string      `json:"warnings"`
+	Version            int           `json:"version"`
+	ChangedBlockIDs    []string      `json:"changed_block_ids"`
+	Layout             LayoutSummary `json:"layout"`
+	Warnings           []string      `json:"warnings"`
+	LayoutHints        []string      `json:"layout_hints,omitempty"`
+	NotebookGuidelines string        `json:"notebook_guidelines,omitempty"`
 }
 
 func (s *Server) mutate(ctx context.Context, id string, expected *int, tool, summary string, fn func(nb *store.Notebook, bs []model.Block) ([]model.Block, []string, error)) (MutationResult, error) {
@@ -196,6 +234,9 @@ func (s *Server) result(ctx context.Context, nb store.Notebook, bs []model.Block
 	if res.ChangedBlockIDs == nil {
 		res.ChangedBlockIDs = []string{}
 	}
+	if s.firstWrite(userOf(ctx), nb.ID) {
+		res.NotebookGuidelines = nb.Guidelines
+	}
 	r, err := s.lb.Build(ctx, nb, bs)
 	if err != nil {
 		res.Warnings = append(res.Warnings, "the change was saved but rendering failed: "+err.Error())
@@ -203,6 +244,7 @@ func (s *Server) result(ctx context.Context, nb store.Notebook, bs []model.Block
 	}
 	res.Layout = LayoutSummary{PageCount: r.PageCount, PageFill: r.PageFill, LastPageFill: r.LastPageFill, LastPageFreeMM: r.LastPageFreeMM(), Blocks: []BlockPage{}}
 	res.Warnings = append(res.Warnings, r.Warnings...)
+	res.LayoutHints = r.Hints()
 	for _, id := range changed {
 		res.Layout.Blocks = append(res.Layout.Blocks, BlockPage{id, r.Page(id), r.Height(id)})
 	}
@@ -212,6 +254,13 @@ func (s *Server) result(ctx context.Context, nb store.Notebook, bs []model.Block
 func validTheme(theme string) error {
 	_, err := layout.ThemeByName(theme)
 	return err
+}
+
+func validDensity(density string) error {
+	if !slices.Contains(store.Densities, density) {
+		return fmt.Errorf("unknown density %q; valid: %s", density, strings.Join(store.Densities, ", "))
+	}
+	return nil
 }
 
 func validMode(mode string) error {

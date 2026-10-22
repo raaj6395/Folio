@@ -73,3 +73,41 @@ func TestBlockMarshalFlat(t *testing.T) {
 		t.Fatal(string(out))
 	}
 }
+
+func TestTableAlignment(t *testing.T) {
+	align := func(src string) []string {
+		t.Helper()
+		b, err := Parse(json.RawMessage(src))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b.Doc()["align"].([]string)
+	}
+	got := align(`{"type":"table","columns":["Plan","Price","Share","Notes"],"rows":[["Free","$0","12%","—"],["Pro","$1,200","3.5%","**best**"],["Team","-","40 %","x"]]}`)
+	if strings.Join(got, ",") != "left,right,right,left" {
+		t.Fatalf("default alignment: %v", got)
+	}
+	got = align(`{"type":"table","columns":["a","b"],"rows":[["1","2"]],"align":["center","left"]}`)
+	if strings.Join(got, ",") != "center,left" {
+		t.Fatalf("explicit alignment: %v", got)
+	}
+	for src, want := range map[string]string{
+		`{"type":"table","columns":["a","b"],"rows":[["1","2"]],"align":["left"]}`:          "align has 1 entries, expected one per column (2)",
+		`{"type":"table","columns":["a","b"],"rows":[["1","2"]],"align":["left","middle"]}`: `align[1] must be "left", "center" or "right", got "middle"`,
+	} {
+		if _, err := Parse(json.RawMessage(src)); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("Parse(%s): got %v, want %q", src, err, want)
+		}
+	}
+}
+
+func TestHeadingInsideTwoColumn(t *testing.T) {
+	ok := `{"type":"two_column","left":[{"type":"heading","level":3,"text":"Pros"},{"type":"paragraph","text":"fast"}],"right":[{"type":"paragraph","text":"x"}]}`
+	if _, err := Parse(json.RawMessage(ok)); err != nil {
+		t.Fatalf("H3 in two_column: %v", err)
+	}
+	bad := `{"type":"two_column","left":[{"type":"heading","level":2,"text":"Pros"}],"right":[{"type":"paragraph","text":"x"}]}`
+	if _, err := Parse(json.RawMessage(bad)); err == nil || !strings.Contains(err.Error(), "only level 3 headings are allowed inside two_column") {
+		t.Fatalf("H2 in two_column: %v", err)
+	}
+}

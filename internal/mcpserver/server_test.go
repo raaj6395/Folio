@@ -234,7 +234,7 @@ func TestDiagrams(t *testing.T) {
 	}
 	var res MutationResult
 	c.call("append_blocks", map[string]any{"notebook_id": nb.ID, "blocks": blocksArg(`[{"type":"diagram","source":"client -> api: request\napi -> db","size":"half","caption":"Flow"}]`)}, &res)
-	if res.Layout.PageCount != 1 || len(res.Warnings) != 0 {
+	if res.Layout.PageCount != 1 || len(res.Warnings) != 1 || !strings.Contains(res.Warnings[0], "% of the page") || len(res.LayoutHints) != 1 || !strings.HasPrefix(res.LayoutHints[0], "p1 oversized_diagram ("+res.ChangedBlockIDs[0]+")") {
 		t.Fatalf("%+v", res)
 	}
 	var out Outline
@@ -285,7 +285,7 @@ func TestTwoColumn(t *testing.T) {
 	c := newClient(t)
 	var nb NotebookInfo
 	c.call("create_notebook", map[string]any{"title": "TC"}, &nb)
-	if msg := c.callErr("append_blocks", map[string]any{"notebook_id": nb.ID, "blocks": blocksArg(`[{"type":"two_column","left":[{"type":"heading","level":2,"text":"x"}],"right":[{"type":"paragraph","text":"y"}]}]`)}); !strings.Contains(msg, "left[0]: type heading is not allowed inside two_column") {
+	if msg := c.callErr("append_blocks", map[string]any{"notebook_id": nb.ID, "blocks": blocksArg(`[{"type":"two_column","left":[{"type":"heading","level":2,"text":"x"}],"right":[{"type":"paragraph","text":"y"}]}]`)}); !strings.Contains(msg, "left[0] (heading): only level 3 headings are allowed inside two_column") {
 		t.Fatal(msg)
 	}
 	var res MutationResult
@@ -397,5 +397,82 @@ func TestRenderRateLimit(t *testing.T) {
 	}
 	if msg := c.callErr("render_pages", map[string]any{"notebook_id": nb.ID, "pages": []int{1}, "ppi": 30}); !strings.Contains(msg, "rendering limit reached") {
 		t.Fatal(msg)
+	}
+}
+
+func TestGuidelinesDensityAndCheckLayout(t *testing.T) {
+	c := newClient(t)
+	var nb NotebookInfo
+	c.call("create_notebook", map[string]any{"title": "G"}, &nb)
+	if nb.Density != "comfortable" {
+		t.Fatalf("default density: %q", nb.Density)
+	}
+	if msg := c.callErr("create_notebook", map[string]any{"title": "x", "density": "legacy"}); !strings.Contains(msg, `unknown density "legacy"; valid: compact, comfortable, airy`) {
+		t.Fatal(msg)
+	}
+	var g GuidelinesOut
+	c.call("set_notebook_guidelines", map[string]any{"notebook_id": nb.ID, "text": "  British spelling. One idea per callout.  "}, &g)
+	if g.Guidelines != "British spelling. One idea per callout." || g.Version != 2 {
+		t.Fatalf("set guidelines: %+v", g)
+	}
+	if msg := c.callErr("set_notebook_guidelines", map[string]any{"notebook_id": nb.ID, "text": strings.Repeat("x", 2001)}); !strings.Contains(msg, "max 2000") {
+		t.Fatal(msg)
+	}
+	var res MutationResult
+	c.call("append_blocks", map[string]any{"notebook_id": nb.ID, "blocks": blocksArg(`[{"type":"heading","level":1,"text":"Intro"},{"type":"paragraph","text":"Hello."}]`)}, &res)
+	if res.NotebookGuidelines != g.Guidelines || len(res.LayoutHints) != 0 {
+		t.Fatalf("first write must carry the guidelines and no hints: %+v", res)
+	}
+	res = MutationResult{}
+	c.call("append_blocks", map[string]any{"notebook_id": nb.ID, "blocks": blocksArg(`[{"type":"paragraph","text":"Again."}]`)}, &res)
+	if res.NotebookGuidelines != "" {
+		t.Fatal("guidelines must only come with the first write of a session")
+	}
+	var out Outline
+	c.call("get_outline", map[string]any{"notebook_id": nb.ID}, &out)
+	if out.Guidelines != g.Guidelines || out.Density != "comfortable" {
+		t.Fatalf("outline: %+v", out)
+	}
+	c.call("get_notebook_guidelines", map[string]any{"notebook_id": nb.ID}, &g)
+	if g.Guidelines != "British spelling. One idea per callout." {
+		t.Fatalf("get guidelines: %+v", g)
+	}
+
+	var check CheckOut
+	c.call("check_layout", map[string]any{"notebook_id": nb.ID}, &check)
+	if check.Score != 100 || len(check.Pages) != 1 || len(check.Pages[0].Issues) != 0 {
+		t.Fatalf("clean notebook: %+v", check)
+	}
+	c.call("append_blocks", map[string]any{"notebook_id": nb.ID, "blocks": blocksArg(`[{"type":"diagram","source":"client -> api: request\napi -> db","size":"half"}]`)}, &res)
+	c.call("check_layout", map[string]any{"notebook_id": nb.ID, "pages": []int{1}}, &check)
+	if check.Score >= 100 || check.Pages[0].Issues[0].Check != "oversized_diagram" || check.Pages[0].Issues[0].Fix == "" {
+		t.Fatalf("diagram issue: %+v", check)
+	}
+	if msg := c.callErr("check_layout", map[string]any{"notebook_id": nb.ID, "pages": []int{9}}); !strings.Contains(msg, "page 9 does not exist") {
+		t.Fatal(msg)
+	}
+
+	c.call("set_theme", map[string]any{"notebook_id": nb.ID, "theme": "clean", "density": "airy"}, &res)
+	c.call("get_outline", map[string]any{"notebook_id": nb.ID}, &out)
+	if out.Density != "airy" || out.Guidelines != g.Guidelines {
+		t.Fatalf("density change: %+v", out)
+	}
+}
+
+func TestLayoutRulesDelivered(t *testing.T) {
+	c := newClient(t)
+	ins := c.cs.InitializeResult().Instructions
+	if n := strings.Count(ins, "\n") + 1; n > 40 {
+		t.Fatalf("instructions are %d lines, want at most 40", n)
+	}
+	for _, rule := range []string{"page_break before every H1", "two_column", "60-95% page fill", "~6 nodes", "check_layout", "notebook_guidelines"} {
+		if !strings.Contains(ins, rule) {
+			t.Errorf("instructions miss %q", rule)
+		}
+	}
+	g := c.raw("get_authoring_guide", map[string]any{})
+	text := g.Content[0].(*mcp.TextContent).Text
+	if !strings.Contains(text, "# Layout rules") || !strings.Contains(text, "Never let a diagram push the rest of its section onto the next page") || strings.Contains(text, "~8 nodes") {
+		t.Fatal("authoring guide must end with the full layout rules and not contradict them")
 	}
 }

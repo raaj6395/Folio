@@ -143,10 +143,11 @@ Every block is validated before anything is saved. If one block in a batch of 10
 
 | Group | Tools |
 |---|---|
-| Notebooks | `list_notebooks`, `create_notebook`, `set_theme`, `list_themes` |
+| Notebooks | `list_notebooks`, `create_notebook`, `rename_notebook`, `delete_notebook`, `set_theme` (theme, mode, density), `list_themes` |
+| Preferences | `set_notebook_guidelines`, `get_notebook_guidelines` (the user's own layout/style rules, versioned with the notebook) |
 | Reading | `get_outline` (compact: ID, type, page, summary per block), `read_blocks`, `get_layout_info` |
 | Writing | `append_blocks`, `insert_blocks`, `update_block`, `delete_blocks`, `move_blocks` |
-| Seeing | `render_pages` (page images for Claude), `preview_diagram` |
+| Seeing | `check_layout` (score 0–100 and every layout issue with a fix), `render_pages` (page images for Claude), `preview_diagram` |
 | History | `list_versions`, `undo`, `restore_version` |
 | Output | `export_pdf`, `get_viewer_url` |
 | Help | `get_authoring_guide` (also the resource `folio://guide`) |
@@ -229,8 +230,8 @@ Add this to the `CLAUDE.md` of any project:
 When I ask for notes, a cheat sheet or a revision sheet, use the `folio` MCP tools:
 1. Call `get_authoring_guide` once per session.
 2. `create_notebook` (or `list_notebooks` / `get_outline` to continue one).
-3. Write section by section with `append_blocks`. Read the returned page fill and warnings.
-4. `render_pages` on a page or two to check the result, and fix problems with `update_block` / `insert_blocks` / `move_blocks`.
+3. Write section by section with `append_blocks`. Read the returned page fill, warnings and `layout_hints`, and fix issues with `update_block` / `insert_blocks` / `move_blocks`.
+4. Before finishing, run `check_layout`, fix what it reports, then `render_pages` once on the changed pages.
 5. End each section with `qa` or `fill_in` blocks for active recall.
 6. `export_pdf` and give me the link. Offer `get_viewer_url` if I want to watch live.
 ```

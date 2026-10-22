@@ -50,8 +50,10 @@ func TestDiagramRender(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(r.Warnings) != 0 {
-		t.Fatal(r.Warnings)
+	for _, is := range r.Issues {
+		if is.Check != "cramped" && is.Check != "oversized_diagram" {
+			t.Fatal(is)
+		}
 	}
 	if d := os.Getenv("FOLIO_KEEP"); d != "" {
 		b.RenderPNG(context.Background(), nb, bs, []int{1, r.PageCount}, 70)
