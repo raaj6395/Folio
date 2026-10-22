@@ -1,12 +1,36 @@
-# 📒 Folio
+<p align="center">
+  <img src="docs/banner.svg" alt="Claude × Folio: make notes with AI" width="100%">
+</p>
 
-### Ask Claude for notes. Get a real notebook.
+<p align="center">
+  <b>Folio</b> is a connector (MCP server) for <b>Claude</b>.<br>
+  You ask Claude for notes in plain words, and Folio turns them into <b>real, printable notebook pages</b>:<br>
+  with diagrams, tables, highlight boxes and quiz questions.
+</p>
 
-> *"Make revision notes on REST vs gRPC with a diagram, a comparison table and a recall question."*
+<p align="center">
+  <a href="#-get-started"><b>Get started</b></a> &nbsp;·&nbsp;
+  <a href="#what-it-looks-like"><b>See examples</b></a> &nbsp;·&nbsp;
+  <a href="#-run-your-own-folio"><b>Run your own</b></a>
+</p>
 
-A few seconds later you have **properly typeset A4 pages**: clean headings, a diagram next to its explanation, comparison tables, definition boxes, and Q&A cards with the answer printed **upside down at the bottom of the page**, like a real revision book. You can watch every page appear live, edit by just asking, and download a print-ready PDF.
+---
 
-Folio plugs into **Claude** (the app on web, desktop and phone, or Claude Code) as a connector. **Claude is the author; Folio is the typesetter.**
+## How it works
+
+| 1️⃣ You ask Claude | 2️⃣ Claude writes the notes | 3️⃣ Folio makes the pages |
+|---|---|---|
+| *"Make notes on REST vs gRPC with a diagram and a quiz."* | Claude plans the sections, comparisons, diagram and recall questions, and sends them to Folio. | Folio lays everything out on A4 pages, checks the layout and shows the pages live. Download them as a PDF. |
+
+> **What is MCP?** It's the standard way to plug new tools into Claude, like installing an app on your phone. Add Folio once in Claude's settings, and Claude can make notebooks for you in any chat.
+
+## From one message to a finished page
+
+| You type this in Claude… | …and get this page |
+|---|---|
+| 💬 *"Make revision notes on **REST vs gRPC** with a diagram, a comparison and a recall question."*<br><br>Then keep editing in plain words:<br>💬 *"Make the spacing airy."*<br>💬 *"Switch to light mode for printing."*<br>💬 *"Undo that."* | <img src="docs/screenshots/layout-guidelines/rest-vs-grpc-comfortable-light.png" width="420" alt="A typeset A4 page about REST vs gRPC: diagram next to its steps, comparison tables, two tips side by side, quiz cards"> |
+
+## Watch it being written, live
 
 ![The Folio viewer: a contents sidebar on the left, live typeset pages on the right](docs/screenshots/viewer.png)
 
