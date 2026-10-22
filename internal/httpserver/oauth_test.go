@@ -105,7 +105,7 @@ func TestOAuthFlowLikeClaude(t *testing.T) {
 		if resp, body := alice.get(authz(meta.URL+"/oauth/elsewhere.json", "https://attacker.example/cb")); resp.StatusCode != 400 || !strings.Contains(body, "same origin") {
 			t.Fatalf("CIMD redirect on another origin must be refused: %d", resp.StatusCode)
 		}
-		if resp, body := alice.get(authz(codeClientURL, "http://localhost:51234/callback")); resp.StatusCode != 200 || !strings.Contains(body, "your own computer") {
+		if resp, body := alice.get(authz(codeClientURL, "http://localhost:51234/callback")); resp.StatusCode != 200 || !strings.Contains(body, "your own computer") || !strings.Contains(resp.Header.Get("Content-Security-Policy"), "form-action 'self' http://localhost:51234;") {
 			t.Fatalf("Claude Code loopback redirect with a port must be accepted with a warning: %d %.200s", resp.StatusCode, body)
 		}
 		if resp, _ := alice.get(authz(codeClientURL, "http://localhost:51234/other")); resp.StatusCode != 400 {
@@ -117,6 +117,9 @@ func TestOAuthFlowLikeClaude(t *testing.T) {
 			resp, body := alice.get(authz(clientID, redirect))
 			if resp.StatusCode != 200 || !strings.Contains(body, "Allow access?") {
 				t.Fatalf("consent page: %d %.200s", resp.StatusCode, body)
+			}
+			if csp := resp.Header.Get("Content-Security-Policy"); !strings.Contains(csp, "form-action 'self' "+meta.URL+";") {
+				t.Fatalf("consent page CSP must let the Allow redirect reach the app's origin: %q", csp)
 			}
 			form := url.Values{}
 			for _, m := range regexp.MustCompile(`name="([a-z_]+)" value="([^"]*)"`).FindAllStringSubmatch(body, -1) {

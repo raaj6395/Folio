@@ -204,6 +204,7 @@ func (a *Accounts) authorize(w http.ResponseWriter, r *http.Request) {
 		if isURLClientID(client.ID) {
 			appHost = hostOf(client.ID)
 		}
+		w.Header().Set("Content-Security-Policy", CSP("'self' "+originOf(q.RedirectURI)))
 		render(w, http.StatusOK, page{Title: "Allow access", Page: "consent", Email: email, ClientName: client.Name, ClientHost: appHost,
 			RedirectHost: hostOf(q.RedirectURI), LoopbackOnly: onlyLoopback(client.RedirectURIs), Form: r.Form})
 		return
@@ -224,6 +225,18 @@ func (a *Accounts) authorize(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.Info("oauth consent granted", "user", userID, "client", client.ID)
 	a.redirectWith(w, r, q.RedirectURI, map[string]string{"code": code, "state": q.State})
+}
+
+func CSP(formAction string) string {
+	return "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'; form-action " + formAction + "; base-uri 'none'"
+}
+
+func originOf(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	return u.Scheme + "://" + u.Host
 }
 
 func hostOf(raw string) string {
