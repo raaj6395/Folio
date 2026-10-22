@@ -218,11 +218,16 @@ func TestAccountsTokensAndIsolation(t *testing.T) {
 				t.Errorf("%s as bob on alice's notebook: isError=%v text=%.120s", name, res.IsError, text)
 			}
 		}
+		for _, action := range []string{"rename", "delete", "restore"} {
+			if resp, body := bob.post("/n/"+nb.ID+"/"+action, url.Values{"title": {"pwned"}}); resp.StatusCode != 404 || strings.Contains(body, "Alice") {
+				t.Errorf("bob POST %s on alice's notebook: %d", action, resp.StatusCode)
+			}
+		}
 		if _, text := callTool(t, a, "get_outline", map[string]any{"notebook_id": nb.ID}); !strings.Contains(text, "top secret") || !strings.Contains(text, "Alice secret") {
 			t.Fatalf("alice's notebook was changed by bob's attacks: %s", text)
 		}
 
-		for _, path := range []string{"/n/" + nb.ID, "/n/" + nb.ID + "/pdf", "/n/" + nb.ID + "/page/1.png"} {
+		for _, path := range []string{"/n/" + nb.ID, "/n/" + nb.ID + "/pdf", "/n/" + nb.ID + "/page/1.png", "/n/" + nb.ID + "/thumb.png"} {
 			if resp, body := bob.get(path); resp.StatusCode != 404 || strings.Contains(body, "Alice") {
 				t.Errorf("bob GET %s: %d %.80s", path, resp.StatusCode, body)
 			}

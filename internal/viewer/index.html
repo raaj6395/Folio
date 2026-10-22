@@ -3,40 +3,196 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#131824">
 <title>Folio</title>
+<link rel="icon" href="/logo.svg" type="image/svg+xml">
 <script>
   let view = "";
   try { view = localStorage.getItem("folio-view-mode") || ""; } catch (e) {}
-  document.documentElement.dataset.theme = view === "light" ? "light" : "dark";
+  document.documentElement.dataset.theme = view || "dark";
 </script>
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-<header>
-  <span class="grow">Folio notebooks</span>
-  {{if .Auth}}<a class="meta" href="/connect">Connect Claude</a>
-  <span class="meta">{{.Email}}</span>
-  <form method="post" action="/logout" style="margin:0"><button class="link" type="submit">Log out</button></form>{{end}}
-  <label class="meta">View
-    <select id="view" title="How notes look in this browser; notebooks themselves are unchanged">
-      <option value="">Auto</option>
-      <option value="dark">Dark</option>
-      <option value="light">Light</option>
-    </select>
-  </label>
+<a class="skip" href="#main">Skip to content</a>
+<header class="bar">
+  <a class="brand" href="/"><img src="/logo.svg" alt="">Folio</a>
+  <span class="grow"></span>
+  <div class="seg" role="group" aria-label="Appearance in this browser">
+    <button type="button" data-view="" title="Auto" aria-label="Auto">◐</button>
+    <button type="button" data-view="dark" title="Dark" aria-label="Dark">☾</button>
+    <button type="button" data-view="light" title="Light" aria-label="Light">☀</button>
+  </div>
+  {{if .Auth}}<details class="menu">
+    <summary class="icon-btn" aria-label="Account menu"><span class="avatar" data-initial="{{.Email}}"></span></summary>
+    <div class="pop">
+      <div class="label">Signed in as</div>
+      <div class="item static">{{.Email}}</div>
+      <hr>
+      <a class="item" href="/connect">Connect Claude</a>
+      <form method="post" action="/logout"><button class="item" type="submit">Log out</button></form>
+    </div>
+  </details>{{end}}
 </header>
-<main>
-{{range .Notebooks}}<a class="nb" href="/n/{{.ID}}"><span>{{.Title}}</span><span class="meta">{{.Theme}} · {{.Mode}} · v{{.Version}} · {{.UpdatedAt.Local.Format "2006-01-02 15:04"}}</span></a>
-{{else}}<p class="empty">No notebooks yet. {{if .Auth}}<a href="/connect">Connect Claude</a>, then ask it to make some notes with Folio.{{else}}Ask Claude to make some notes with Folio.{{end}}</p>{{end}}
+<main id="main">
+{{if .Notebooks}}
+  <div class="toolbar">
+    <h1>Notebooks <span class="meta">{{len .Notebooks}}</span></h1>
+    {{if gt (len .Notebooks) 6}}<input class="search" id="q" type="search" placeholder="Search notebooks  ( / )" aria-label="Search notebooks">
+    <select id="sort" aria-label="Sort notebooks"><option value="recent">Recently edited</option><option value="az">Title A–Z</option></select>{{end}}
+  </div>
+  <div class="grid" id="grid">
+  {{range .Notebooks}}<article class="nb" data-key="{{.ID}}:{{.Version}}" data-title="{{.Title}}" data-updated="{{.UpdatedAt.UTC.Format "2006-01-02T15:04:05Z07:00"}}">
+    <div class="thumb"><img alt="" loading="lazy" data-src="/n/{{.ID}}/thumb.png?v={{.Version}}"></div>
+    <div class="body">
+      <a class="t" href="/n/{{.ID}}">{{.Title}}</a>
+      <div class="foot"><span class="pill">{{.Theme}}</span><span class="pill">{{.Mode}}</span><time class="meta" datetime="{{.UpdatedAt.UTC.Format "2006-01-02T15:04:05Z07:00"}}">{{.UpdatedAt.Format "2 Jan 2006"}}</time></div>
+    </div>
+    <details class="menu">
+      <summary class="icon-btn" aria-label="Actions for {{.Title}}" title="Actions">⋯</summary>
+      <div class="pop">
+        <a class="item" href="/n/{{.ID}}">Open</a>
+        <a class="item" href="/n/{{.ID}}/pdf">Download PDF</a>
+        <button class="item" type="button" data-rename="{{.ID}}" data-current="{{.Title}}">Rename…</button>
+        <hr>
+        <form method="post" action="/n/{{.ID}}/delete"><button class="item danger" type="submit" data-confirm="Click again to delete">Delete</button></form>
+      </div>
+    </details>
+  </article>
+  {{end}}</div>
+  <p class="meta center" id="none" hidden>No notebooks match your search.</p>
+{{else}}
+  <div class="empty">
+    <img src="/logo.svg" alt="">
+    <h1>Your notebooks will appear here</h1>
+    <p class="meta">Claude writes your notes and Folio typesets them into clean pages. Here's how to make the first one.</p>
+    <ol class="steps">
+      {{if .Connected}}<li class="done"><b>Claude is connected</b><br><span class="meta">Done. Claude can reach your Folio.</span></li>
+      {{else}}<li><b>Connect Claude</b><br><span class="meta">{{if .Auth}}<a href="/connect">Add Folio as a connector</a>. It takes a minute.{{else}}Add Folio to Claude as an MCP server.{{end}}</span></li>{{end}}
+      <li{{if .Connected}} class="current"{{end}}><b>Ask for notes</b><br><span class="meta">Copy one of the prompts below into Claude.</span></li>
+      <li><b>Watch it appear</b><br><span class="meta">It shows up on this page by itself, no reload needed.</span></li>
+    </ol>
+    <div class="prompts">
+      <h3>Try a prompt</h3>
+      <div class="copy prompt"><code id="p1">Use Folio to make study notes on how DNS works, with a diagram.</code><button class="btn secondary" type="button" data-copy="p1">Copy</button></div>
+      <div class="copy prompt"><code id="p2">Make a Folio notebook on Big-O notation with a table of common algorithms.</code><button class="btn secondary" type="button" data-copy="p2">Copy</button></div>
+      <div class="copy prompt"><code id="p3">Create Folio Q&amp;A flashcards on the causes of the French Revolution.</code><button class="btn secondary" type="button" data-copy="p3">Copy</button></div>
+    </div>
+  </div>
+{{end}}
 </main>
+
+<dialog id="renameDlg" aria-labelledby="renameTitle">
+  <form method="post" id="renameForm">
+    <h2 id="renameTitle">Rename notebook</h2>
+    <div class="field"><label for="newTitle">Title</label><input id="newTitle" type="text" name="title" required maxlength="200"></div>
+    <div class="actions"><button class="btn secondary" type="button" data-close>Cancel</button><button class="btn" type="submit">Save</button></div>
+  </form>
+</dialog>
+
+<script src="/app.js"></script>
 <script>
-  const viewEl = document.getElementById("view");
-  viewEl.value = view;
-  viewEl.onchange = () => {
-    view = viewEl.value;
-    try { localStorage.setItem("folio-view-mode", view); } catch (e) {}
-    document.documentElement.dataset.theme = view === "light" ? "light" : "dark";
+const main = document.getElementById("main");
+
+function post(action) {
+  const f = document.createElement("form");
+  f.method = "post";
+  f.action = action;
+  document.body.append(f);
+  f.submit();
+}
+
+function thumbs() {
+  main.querySelectorAll("img[data-src]").forEach((img) => {
+    const thumb = img.parentElement;
+    img.onload = () => thumb.classList.add("ready");
+    img.src = img.dataset.src + (view ? "&mode=" + view : "");
+  });
+}
+
+function init() {
+  thumbs();
+  main.querySelectorAll("[data-rename]").forEach((b) => (b.onclick = () => {
+    b.closest("details").open = false;
+    document.getElementById("renameForm").action = "/n/" + b.dataset.rename + "/rename";
+    const input = document.getElementById("newTitle");
+    input.value = b.dataset.current;
+    document.getElementById("renameDlg").showModal();
+    input.select();
+  }));
+  const q = document.getElementById("q");
+  if (!q) return;
+  const grid = document.getElementById("grid");
+  const sort = document.getElementById("sort");
+  const cards = [...grid.children];
+  q.oninput = () => {
+    const term = q.value.trim().toLowerCase();
+    let shown = 0;
+    cards.forEach((c) => {
+      c.hidden = !c.dataset.title.toLowerCase().includes(term);
+      shown += !c.hidden;
+    });
+    document.getElementById("none").hidden = shown > 0;
   };
+  const order = () => {
+    folio.store.set("folio-sort", sort.value);
+    const by = sort.value === "az"
+      ? (a, b) => a.dataset.title.localeCompare(b.dataset.title)
+      : (a, b) => b.dataset.updated.localeCompare(a.dataset.updated);
+    grid.append(...[...cards].sort(by));
+  };
+  sort.value = folio.store.get("folio-sort") === "az" ? "az" : "recent";
+  sort.onchange = order;
+  order();
+}
+
+const keys = () => [...main.querySelectorAll("[data-key]")].map((e) => e.dataset.key);
+
+async function refresh() {
+  if (document.hidden || document.querySelector("details.menu[open], dialog[open]")) return;
+  let res;
+  try {
+    res = await fetch("/", { cache: "no-store" });
+  } catch (e) {
+    return;
+  }
+  if (!res.ok || res.redirected) return;
+  const fresh = new DOMParser().parseFromString(await res.text(), "text/html").getElementById("main");
+  const before = new Set(keys());
+  const after = [...fresh.querySelectorAll("[data-key]")].map((e) => e.dataset.key);
+  if (after.length === before.size && after.every((k) => before.has(k))) return;
+  const q = document.getElementById("q");
+  const term = q ? q.value : "", focused = document.activeElement === q;
+  main.replaceChildren(...fresh.childNodes);
+  after.filter((k) => !before.has(k)).forEach((k) => main.querySelector('[data-key="' + k + '"]').classList.add("fresh"));
+  folio.enhance(main);
+  init();
+  const q2 = document.getElementById("q");
+  if (q2 && term) {
+    q2.value = term;
+    q2.oninput();
+  }
+  if (q2 && focused) q2.focus();
+}
+setInterval(refresh, 5000);
+document.addEventListener("visibilitychange", refresh);
+document.addEventListener("folio:view", thumbs);
+
+document.addEventListener("keydown", (e) => {
+  const q = document.getElementById("q");
+  if (q && e.key === "/" && !e.target.closest("input, select, textarea")) {
+    e.preventDefault();
+    q.focus();
+  }
+});
+
+const params = new URLSearchParams(location.search);
+if (params.has("deleted")) {
+  const id = params.get("deleted");
+  history.replaceState(null, "", "/");
+  folio.toast("Deleted “" + (params.get("title") || "notebook") + "”", { label: "Undo", run: () => post("/n/" + encodeURIComponent(id) + "/restore") }, "deleted", 9000);
+}
+init();
 </script>
 </body>
 </html>

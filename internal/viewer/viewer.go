@@ -25,6 +25,7 @@ import (
 
 const (
 	PPI         = 110
+	ThumbPPI    = 72
 	DefaultPort = 7420
 )
 
@@ -37,9 +38,19 @@ var notebookHTML string
 //go:embed style.css
 var styleCSS string
 
+//go:embed app.js
+var appJS string
+
+//go:embed logo.svg
+var logoSVG string
+
+//go:embed error.html
+var errorHTML string
+
 var (
 	indexTmpl    = template.Must(template.New("index").Parse(indexHTML))
 	notebookTmpl = template.Must(template.New("notebook").Parse(notebookHTML))
+	errorTmpl    = template.Must(template.New("error").Parse(errorHTML))
 )
 
 type Server struct {
@@ -59,15 +70,28 @@ func New(st *store.Store, lb *layout.Builder, user func(*http.Request) (id, emai
 	s := &Server{st: st, lb: lb, user: user, auth: auth}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.require(true, s.index))
-	mux.HandleFunc("GET /style.css", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/css; charset=utf-8")
-		fmt.Fprint(w, styleCSS)
-	})
+	asset := func(path, contentType, body string) {
+		mux.HandleFunc("GET "+path, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", contentType)
+			fmt.Fprint(w, body)
+		})
+	}
+	asset("/style.css", "text/css; charset=utf-8", styleCSS)
+	asset("/app.js", "text/javascript; charset=utf-8", appJS)
+	asset("/logo.svg", "image/svg+xml", logoSVG)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "folio viewer ok") })
 	mux.HandleFunc("GET /n/{id}", s.require(true, s.notebook))
 	mux.HandleFunc("GET /n/{id}/events", s.require(false, s.events))
 	mux.HandleFunc("GET /n/{id}/page/{file}", s.require(false, s.page))
 	mux.HandleFunc("GET /n/{id}/pdf", s.require(true, s.pdf))
+	mux.HandleFunc("GET /n/{id}/thumb.png", s.require(false, s.thumb))
+	cop := http.NewCrossOriginProtection()
+	mux.Handle("POST /n/{id}/rename", cop.Handler(s.require(true, s.rename)))
+	mux.Handle("POST /n/{id}/delete", cop.Handler(s.require(true, s.del)))
+	mux.Handle("POST /n/{id}/restore", cop.Handler(s.require(true, s.restore)))
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		renderError(w, http.StatusNotFound, "Page not found", "There's nothing at this address.")
+	})
 	return mux
 }
 
@@ -99,6 +123,30 @@ type State struct {
 	PageCount int       `json:"page_count"`
 	UpdatedAt time.Time `json:"updated_at"`
 	Pages     []string  `json:"pages"`
+	Outline   []Heading `json:"outline"`
+}
+
+type Heading struct {
+	Text  string  `json:"text"`
+	Level int     `json:"level"`
+	Page  int     `json:"page"`
+	YMM   float64 `json:"y_mm"`
+}
+
+func outline(bs []model.Block, r *layout.Result) []Heading {
+	out := []Heading{}
+	for i, p := range r.Blocks {
+		var h model.Heading
+		if p.Type != "heading" || json.Unmarshal(bs[i].Data, &h) != nil {
+			continue
+		}
+		var text strings.Builder
+		for _, sp := range model.ParseInline(h.Text) {
+			text.WriteString(sp.Text)
+		}
+		out = append(out, Heading{Text: text.String(), Level: h.Level, Page: p.Page, YMM: p.YMM})
+	}
+	return out
 }
 
 func viewMode(r *http.Request, nb *store.Notebook) {
@@ -127,7 +175,7 @@ func (s *Server) state(r *http.Request) (State, error) {
 	if err != nil {
 		return State{}, err
 	}
-	return State{ID: nb.ID, Title: nb.Title, Theme: nb.Theme, Mode: nb.Mode, Version: nb.Version, PageCount: res.PageCount, UpdatedAt: nb.UpdatedAt, Pages: signatures(nb, bs, res)}, nil
+	return State{ID: nb.ID, Title: nb.Title, Theme: nb.Theme, Mode: nb.Mode, Version: nb.Version, PageCount: res.PageCount, UpdatedAt: nb.UpdatedAt, Pages: signatures(nb, bs, res), Outline: outline(bs, res)}, nil
 }
 
 func signatures(nb store.Notebook, bs []model.Block, r *layout.Result) []string {
@@ -149,13 +197,20 @@ func signatures(nb store.Notebook, bs []model.Block, r *layout.Result) []string 
 	return out
 }
 
+func renderError(w http.ResponseWriter, status int, title, msg string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(status)
+	errorTmpl.Execute(w, map[string]any{"Status": status, "Title": title, "Message": msg})
+}
+
 func (s *Server) fail(w http.ResponseWriter, err error) {
 	if errors.Is(err, store.ErrNotFound) {
-		http.Error(w, "notebook not found", http.StatusNotFound)
+		renderError(w, http.StatusNotFound, "Notebook not found", "It may have been deleted, or it belongs to another account.")
 		return
 	}
 	slog.Error("viewer", "err", err)
-	http.Error(w, err.Error(), http.StatusInternalServerError)
+	renderError(w, http.StatusInternalServerError, "Something went wrong", "Folio couldn't load this. Try again in a moment.")
 }
 
 func (s *Server) index(w http.ResponseWriter, r *http.Request) {
@@ -165,8 +220,14 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	email, _ := r.Context().Value(emailKey{}).(string)
+	connected := false
+	if s.auth && len(nbs) == 0 {
+		if connected, err = s.st.HasConnection(uid(r)); err != nil {
+			slog.Error("has connection", "err", err)
+		}
+	}
 	w.Header().Set("Cache-Control", "no-store")
-	indexTmpl.Execute(w, map[string]any{"Notebooks": nbs, "Email": email, "Auth": s.auth})
+	indexTmpl.Execute(w, map[string]any{"Notebooks": nbs, "Email": email, "Auth": s.auth, "Connected": connected})
 }
 
 func (s *Server) notebook(w http.ResponseWriter, r *http.Request) {
@@ -226,6 +287,12 @@ func (s *Server) page(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	s.png(w, r, n, PPI, true)
+}
+
+func (s *Server) thumb(w http.ResponseWriter, r *http.Request) { s.png(w, r, 1, ThumbPPI, false) }
+
+func (s *Server) png(w http.ResponseWriter, r *http.Request, n, ppi int, all bool) {
 	nb, bs, err := s.load(r)
 	if err != nil {
 		s.fail(w, err)
@@ -240,18 +307,59 @@ func (s *Server) page(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	all := make([]int, res.PageCount)
-	for i := range all {
-		all[i] = i + 1
+	pages := []int{n}
+	if all {
+		pages = make([]int, res.PageCount)
+		for i := range pages {
+			pages[i] = i + 1
+		}
 	}
-	pngs, err := s.lb.RenderPNG(r.Context(), nb, bs, all, PPI)
+	pngs, err := s.lb.RenderPNG(r.Context(), nb, bs, pages, ppi)
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
 	w.Header().Set("Content-Type", "image/png")
 	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
-	w.Write(pngs[n-1])
+	w.Write(pngs[slices.Index(pages, n)])
+}
+
+func (s *Server) rename(w http.ResponseWriter, r *http.Request) {
+	title := strings.TrimSpace(r.FormValue("title"))
+	if title == "" || len(title) > 200 {
+		renderError(w, http.StatusBadRequest, "Can't rename", "A title must be 1 to 200 characters.")
+		return
+	}
+	_, _, err := s.st.Mutate(uid(r), r.PathValue("id"), nil, "rename_notebook", "renamed to "+title+" in the web app",
+		func(nb *store.Notebook, bs []model.Block) ([]model.Block, error) {
+			nb.Title = title
+			return bs, nil
+		})
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+func (s *Server) del(w http.ResponseWriter, r *http.Request) {
+	nb, err := s.st.Notebook(uid(r), r.PathValue("id"))
+	if err == nil {
+		err = s.st.Delete(uid(r), nb.ID)
+	}
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	http.Redirect(w, r, "/?"+url.Values{"deleted": {nb.ID}, "title": {nb.Title}}.Encode(), http.StatusSeeOther)
+}
+
+func (s *Server) restore(w http.ResponseWriter, r *http.Request) {
+	if err := s.st.Undelete(uid(r), r.PathValue("id")); err != nil {
+		s.fail(w, err)
+		return
+	}
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 func (s *Server) pdf(w http.ResponseWriter, r *http.Request) {

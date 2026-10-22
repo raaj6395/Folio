@@ -433,6 +433,17 @@ func (s *Store) Delete(userID, id string) error {
 	return nil
 }
 
+func (s *Store) Undelete(userID, id string) error {
+	res, err := s.db.Exec(s.q(`UPDATE notebooks SET deleted_at = NULL WHERE id = ? AND user_id = ? AND deleted_at IS NOT NULL`), id, userID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (s *Store) Blocks(userID, id string) ([]model.Block, error) {
 	if _, err := s.Notebook(userID, id); err != nil {
 		return nil, err

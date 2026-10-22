@@ -206,7 +206,7 @@ func (a *Accounts) authorize(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Content-Security-Policy", CSP("'self' "+originOf(q.RedirectURI)))
 		render(w, http.StatusOK, page{Title: "Allow access", Page: "consent", Email: email, ClientName: client.Name, ClientHost: appHost,
-			RedirectHost: hostOf(q.RedirectURI), LoopbackOnly: onlyLoopback(client.RedirectURIs), Form: r.Form})
+			RedirectHost: hostOf(q.RedirectURI), LoopbackOnly: onlyLoopback(client.RedirectURIs), Form: r.Form, Next: r.URL.Path + "?" + r.Form.Encode()})
 		return
 	}
 	if r.Form.Get("decision") != "allow" {

@@ -3,113 +3,186 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#131824">
 <title>{{.Title}} · Folio</title>
+<link rel="icon" href="/logo.svg" type="image/svg+xml">
 <script>
   let view = "";
   try { view = localStorage.getItem("folio-view-mode") || ""; } catch (e) {}
-  document.documentElement.dataset.theme = view === "light" ? "light" : "dark";
+  document.documentElement.dataset.theme = view || "dark";
 </script>
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-<header>
-  <a class="home" href="/">📒 Folio</a>
+<a class="skip" href="#main">Skip to content</a>
+<header class="bar">
+  <a class="brand" href="/"><img src="/logo.svg" alt="">Folio</a>
   <span class="grow"></span>
-  {{if .Email}}<a class="meta" href="/">My notebooks</a><span class="meta">{{.Email}}</span>
-  <form method="post" action="/logout" style="margin:0"><button class="link" type="submit">Log out</button></form>{{end}}
+  <div class="seg" role="group" aria-label="Appearance in this browser">
+    <button type="button" data-view="" title="Auto" aria-label="Auto">◐</button>
+    <button type="button" data-view="dark" title="Dark" aria-label="Dark">☾</button>
+    <button type="button" data-view="light" title="Light" aria-label="Light">☀</button>
+  </div>
+  {{if .Email}}<details class="menu">
+    <summary class="icon-btn" aria-label="Account menu"><span class="avatar" data-initial="{{.Email}}"></span></summary>
+    <div class="pop">
+      <div class="label">Signed in as</div>
+      <div class="item static">{{.Email}}</div>
+      <hr>
+      <a class="item" href="/">My notebooks</a>
+      <a class="item" href="/connect">Connect Claude</a>
+      <form method="post" action="/logout"><button class="item" type="submit">Log out</button></form>
+    </div>
+  </details>{{end}}
 </header>
-<main class="narrow">
+
 {{if eq .Page "login" "signup"}}
-  <h1>{{if eq .Page "login"}}Log in{{else}}Create your account{{end}}</h1>
-  <p class="meta">{{if eq .Page "login"}}Your notebooks, typeset by Claude.{{else}}Sign up, create a token, paste it into Claude, and every note Claude writes lands in your private notebook.{{end}}</p>
-  {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
-  <form method="post" action="/{{.Page}}" class="card">
+<main id="main" class="auth">
+  <div class="hero">
+    <img src="/logo.svg" alt="">
+    <h1>{{if eq .Page "login"}}Welcome back{{else}}Create your account{{end}}</h1>
+    <p class="meta">{{if eq .Page "login"}}Log in to read the notebooks Claude typesets for you.{{else}}Claude writes your notes. Folio typesets them into clean pages you can read and print.{{end}}</p>
+    {{if eq .Page "signup"}}<div class="flow"><b>① Sign up</b><span>→</span><span>② Connect Claude</span><span>→</span><span>③ Ask for notes</span></div>{{end}}
+  </div>
+  {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
+  <form method="post" action="/{{.Page}}" class="card" data-busy="{{if eq .Page "login"}}Logging in…{{else}}Creating account…{{end}}">
     <input type="hidden" name="next" value="{{.Next}}">
-    <label>Email <input type="email" name="email" value="{{.EmailInput}}" required autocomplete="email"></label>
-    <label>Password <input type="password" name="password" required minlength="10" autocomplete="{{if eq .Page "login"}}current-password{{else}}new-password{{end}}"></label>
-    {{if eq .Page "signup"}}<p class="meta">At least 10 characters.</p>{{end}}
-    <button class="btn" type="submit">{{if eq .Page "login"}}Log in{{else}}Sign up{{end}}</button>
+    <div class="field">
+      <label for="email">Email</label>
+      <input id="email" type="email" name="email" value="{{.EmailInput}}" required autocomplete="email"{{if not .EmailInput}} autofocus{{end}}>
+    </div>
+    <div class="field">
+      <label for="pw">Password</label>
+      <span class="pw">
+        <input id="pw" type="password" name="password" required minlength="10" autocomplete="{{if eq .Page "login"}}current-password{{else}}new-password{{end}}"{{if .EmailInput}} autofocus{{end}}>
+        <button class="icon-btn" type="button" data-reveal="pw" aria-label="Show password" aria-pressed="false">Show</button>
+      </span>
+      <span class="hint warn" id="caps" hidden>Caps Lock is on</span>
+      {{if eq .Page "signup"}}<span class="hint" id="pwhint" data-min="10">At least 10 characters.</span>{{end}}
+    </div>
+    <button class="btn lg block" type="submit">{{if eq .Page "login"}}Log in{{else}}Create account{{end}}</button>
   </form>
-  <p class="meta">{{if eq .Page "login"}}New here? <a href="/signup?next={{.Next}}">Create an account</a>{{else}}Already have an account? <a href="/login?next={{.Next}}">Log in</a>{{end}}</p>
+  <p class="meta center">{{if eq .Page "login"}}New to Folio? <a href="/signup?next={{.Next}}">Create an account</a>{{else}}Already have an account? <a href="/login?next={{.Next}}">Log in</a>{{end}}</p>
+</main>
 {{end}}
+
 {{if eq .Page "connect"}}
+<main id="main" class="narrow">
   <h1>Connect Claude</h1>
-  <div class="card highlight">
-    <h2 style="margin-top:0">Claude app <span class="meta">web · desktop · phone</span></h2>
-    <ol class="steps">
-      <li>In Claude, open <b>Settings → Connectors → Add custom connector</b>.</li>
-      <li>Name: <code>Folio</code>. URL:
-        <div class="copy"><code id="url">{{.MCPURL}}</code><button class="btn" type="button" data-copy="url">Copy</button></div></li>
-      <li>Keep <b>Sign in now</b> and <b>Use Claude's published identity</b>, then click <b>Add</b>.</li>
-      <li>Folio opens: you're already logged in, so click <b>Allow</b>. Done.</li>
-    </ol>
-    <h3>Claude Code</h3>
-    <div class="copy"><pre id="cc">claude mcp add -s user --transport http folio {{.MCPURL}}</pre><button class="btn" type="button" data-copy="cc">Copy</button></div>
-    <p class="meta">Then run <code>/mcp</code> in Claude Code, pick <b>folio</b> and choose <b>Authenticate</b>. Your browser opens this site to approve.</p>
+  <p class="meta">Add Folio to Claude once. After that, every notebook Claude makes lands in your account.</p>
+  {{if .Connected}}
+  <div class="status ok"><span class="dot"></span><div><b>Connected</b>{{with .Grants}}{{with index . 0}} <span class="meta">· {{.ClientName}}{{if not .LastUsedAt.IsZero}}, active <time data-recent datetime="{{.LastUsedAt.UTC.Format "2006-01-02T15:04:05Z07:00"}}">{{.LastUsedAt.Format "2 Jan 15:04"}}</time>{{end}}</span>{{end}}{{end}}
+    <div class="meta">You're all set. Ask Claude for notes and they'll show up in <a href="/">your notebooks</a>.</div></div></div>
+  {{else}}
+  <div class="status"><span class="dot"></span><div><b>Not connected yet</b><div class="meta">Pick your Claude app below. It takes about a minute.</div></div></div>
+  {{end}}
+
+  {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
+  <div class="tabs"{{if or .NewToken .Error}} data-initial="tab-token"{{end}}>
+    <div role="tablist" aria-label="Where you use Claude">
+      <button role="tab" type="button" data-tab="tab-app">Claude app</button>
+      <button role="tab" type="button" data-tab="tab-code">Claude Code</button>
+      <button role="tab" type="button" data-tab="tab-token">Other (token)</button>
+    </div>
+
+    <section id="tab-app" role="tabpanel" class="card">
+      <p class="meta" style="margin-top:0">Works on claude.ai, the desktop app and your phone.</p>
+      <ol class="steps">
+        <li>In Claude, open <b>Settings → Connectors → Add custom connector</b>.</li>
+        <li>Name it <code>Folio</code> and paste this URL:
+          <div class="copy"><code id="url">{{.MCPURL}}</code><button class="btn" type="button" data-copy="url">Copy</button></div></li>
+        <li>Keep <b>Sign in now</b> and <b>Use Claude's published identity</b>, then click <b>Add</b>.</li>
+        <li>Folio opens. You're already logged in, so click <b>Allow</b>. Done.</li>
+      </ol>
+    </section>
+
+    <section id="tab-code" role="tabpanel" class="card">
+      <ol class="steps">
+        <li>Run this in your terminal:
+          <div class="copy"><pre id="cc">claude mcp add -s user --transport http folio {{.MCPURL}}</pre><button class="btn" type="button" data-copy="cc">Copy</button></div></li>
+        <li>In Claude Code, run <code>/mcp</code>, pick <b>folio</b> and choose <b>Authenticate</b>.</li>
+        <li>Your browser opens this site. Click <b>Allow</b>.</li>
+      </ol>
+    </section>
+
+    <section id="tab-token" role="tabpanel" class="card">
+      <p class="meta" style="margin-top:0">For tools that can't sign in with OAuth. A token works like a password for your notebooks, so keep it secret.</p>
+      {{if .NewToken}}
+      <div class="alert warn">Copy your new token now. Folio shows it only once.</div>
+      <div class="copy"><code id="tok">{{.NewToken}}</code><button class="btn" type="button" data-copy="tok">Copy</button></div>
+      <p class="meta">Send it as the header <code>Authorization: Bearer {{.NewToken}}</code>, for example:</p>
+      <div class="copy"><pre id="cmd">claude mcp add -s user --transport http folio {{.MCPURL}} --header "Authorization: Bearer {{.NewToken}}"</pre><button class="btn" type="button" data-copy="cmd">Copy</button></div>
+      {{end}}
+      <form method="post" action="/connect/tokens" class="row" style="margin-top:14px">
+        <div class="field"><label for="tokname">Token name</label><input id="tokname" type="text" name="name" placeholder="e.g. CI script" maxlength="60"></div>
+        <button class="btn" type="submit" style="height:38px">Create token</button>
+      </form>
+      {{if .Tokens}}<div class="table-wrap" style="margin-top:16px"><table class="tokens">
+        <tr><th>Name</th><th>Token</th><th>Created</th><th>Last used</th><th></th></tr>
+        {{range .Tokens}}<tr{{if .Revoked}} class="revoked"{{end}}>
+          <td>{{.Name}}</td><td><code>folio_pat_…{{.Last4}}</code></td>
+          <td>{{.CreatedAt.Local.Format "2 Jan 2006"}}</td>
+          <td>{{if .LastUsedAt.IsZero}}never{{else}}<time data-recent datetime="{{.LastUsedAt.UTC.Format "2006-01-02T15:04:05Z07:00"}}">{{.LastUsedAt.Local.Format "2 Jan 15:04"}}</time>{{end}}</td>
+          <td>{{if .Revoked}}revoked{{else}}<form method="post" action="/connect/tokens/{{.ID}}/revoke" class="inline"><button class="link danger" type="submit" data-confirm="Click to confirm">Revoke</button></form>{{end}}</td>
+        </tr>{{end}}
+      </table></div>{{end}}
+    </section>
   </div>
 
   <h2>Connected apps</h2>
-  {{if .Grants}}<table class="tokens">
-    <tr><th>App</th><th>Connected</th><th>Last refreshed</th><th></th></tr>
+  {{if .Grants}}<div class="table-wrap"><table class="tokens">
+    <tr><th>App</th><th>Connected</th><th>Last active</th><th></th></tr>
     {{range .Grants}}<tr>
-      <td>{{.ClientName}}</td>
-      <td>{{.CreatedAt.Local.Format "2006-01-02"}}</td>
-      <td>{{if .LastUsedAt.IsZero}}—{{else}}{{.LastUsedAt.Local.Format "2006-01-02 15:04"}}{{end}}</td>
-      <td><form method="post" action="/connect/apps/{{.ID}}/revoke" style="margin:0"><button class="link danger" type="submit">Disconnect</button></form></td>
+      <td><b>{{.ClientName}}</b></td>
+      <td>{{.CreatedAt.Local.Format "2 Jan 2006"}}</td>
+      <td>{{if .LastUsedAt.IsZero}}—{{else}}<time data-recent datetime="{{.LastUsedAt.UTC.Format "2006-01-02T15:04:05Z07:00"}}">{{.LastUsedAt.Local.Format "2 Jan 15:04"}}</time>{{end}}</td>
+      <td><form method="post" action="/connect/apps/{{.ID}}/revoke" class="inline"><button class="link danger" type="submit" data-confirm="Click to confirm">Disconnect</button></form></td>
     </tr>{{end}}
-  </table>{{else}}<p class="meta">No apps connected yet.</p>{{end}}
+  </table></div>{{else}}<p class="meta">No apps connected yet.</p>{{end}}
 
-  <details class="advanced"{{if .NewToken}} open{{end}}>
-    <summary>Advanced: personal access tokens</summary>
-    <p class="meta">For tools that can't sign in with OAuth. A token works like a password for your notebooks: keep it secret.</p>
-    {{if .NewToken}}
-    <div class="card">
-      <p class="error">Copy your new token now. Folio shows it only once.</p>
-      <div class="copy"><code id="tok">{{.NewToken}}</code><button class="btn" type="button" data-copy="tok">Copy</button></div>
-      <p class="meta">Use it as the header <code>Authorization: Bearer {{.NewToken}}</code>, for example:</p>
-      <div class="copy"><pre id="cmd">claude mcp add -s user --transport http folio {{.MCPURL}} --header "Authorization: Bearer {{.NewToken}}"</pre><button class="btn" type="button" data-copy="cmd">Copy</button></div>
-    </div>
-    {{end}}
-    <form method="post" action="/connect/tokens" class="card row">
-      <label class="grow">Token name <input type="text" name="name" placeholder="e.g. CI script" maxlength="60"></label>
-      <button class="btn" type="submit">Create token</button>
-    </form>
-    {{if .Tokens}}<table class="tokens">
-      <tr><th>Name</th><th>Token</th><th>Created</th><th>Last used</th><th></th></tr>
-      {{range .Tokens}}<tr{{if .Revoked}} class="revoked"{{end}}>
-        <td>{{.Name}}</td><td><code>folio_pat_…{{.Last4}}</code></td>
-        <td>{{.CreatedAt.Local.Format "2006-01-02"}}</td>
-        <td>{{if .LastUsedAt.IsZero}}never{{else}}{{.LastUsedAt.Local.Format "2006-01-02 15:04"}}{{end}}</td>
-        <td>{{if .Revoked}}revoked{{else}}<form method="post" action="/connect/tokens/{{.ID}}/revoke" style="margin:0"><button class="link danger" type="submit">Revoke</button></form>{{end}}</td>
-      </tr>{{end}}
-    </table>{{end}}
-  </details>
+  <h2>Then try a prompt</h2>
+  <div class="copy prompt"><code id="p1">Use Folio to make study notes on how DNS works, with a diagram.</code><button class="btn secondary" type="button" data-copy="p1">Copy</button></div>
+  <div class="copy prompt"><code id="p2">Make a Folio notebook on Big-O notation with a table of common algorithms.</code><button class="btn secondary" type="button" data-copy="p2">Copy</button></div>
+  <div class="copy prompt"><code id="p3">Create Folio Q&amp;A flashcards on the causes of the French Revolution.</code><button class="btn secondary" type="button" data-copy="p3">Copy</button></div>
+</main>
 {{end}}
+
 {{if eq .Page "consent"}}
-  <h1>Allow access?</h1>
-  <div class="card highlight">
-    <p>An app from <b>{{.ClientHost}}</b> <span class="meta">(it calls itself "{{.ClientName}}")</span> wants to use your Folio account <b>{{.Email}}</b>.</p>
-    <p class="meta">After you allow it, you'll be sent back to <b>{{.RedirectHost}}</b>. It will be able to read, create, edit and delete your notebooks. You can disconnect it any time on the Connect Claude page.</p>
-    {{if .LoopbackOnly}}<p class="error">This app returns to a program on your own computer. Only allow it if you just started connecting Folio from that program (for example Claude Code).</p>{{end}}
-    <form method="post" action="/oauth/authorize" class="row" style="display:flex;gap:10px">
+<main id="main" class="auth consent">
+  <div class="apps" aria-hidden="true">
+    <span class="app-icon" data-initial="{{.ClientName}}"></span>
+    <span class="meta">⇄</span>
+    <span class="app-icon"><img src="/logo.svg" alt=""></span>
+  </div>
+  <h1 class="center">Allow access?</h1>
+  <p class="center">An app from <b>{{.ClientHost}}</b> wants to use your Folio account.<br><span class="meta">It calls itself "{{.ClientName}}".</span></p>
+  <div class="card">
+    <div class="meta">If you allow it, it can:</div>
+    <ul class="perm">
+      <li>Read your notebooks</li>
+      <li>Create and edit notebooks</li>
+      <li>Delete notebooks</li>
+    </ul>
+    <p class="meta">You'll go back to <b>{{.RedirectHost}}</b>. You can disconnect it any time on the Connect Claude page.</p>
+    {{if .LoopbackOnly}}<p class="alert warn">This app returns to a program on your own computer. Only allow it if you just started connecting Folio from that program (for example Claude Code).</p>{{end}}
+    <form method="post" action="/oauth/authorize" class="stack">
       {{range $k, $v := .Form}}{{if ne $k "decision"}}<input type="hidden" name="{{$k}}" value="{{index $v 0}}">{{end}}{{end}}
-      <button class="btn" type="submit" name="decision" value="allow">Allow</button>
-      <button class="btn secondary" type="submit" name="decision" value="deny">Cancel</button>
+      <button class="btn lg block" type="submit" name="decision" value="allow">Allow</button>
+      <button class="btn secondary lg block" type="submit" name="decision" value="deny">Cancel</button>
     </form>
   </div>
-{{end}}
-{{if eq .Page "oauth_error"}}
-  <h1>Can't connect</h1>
-  <p class="error">{{.Error}}</p>
-  <p class="meta">Go back to the app and try adding the connector again. If it keeps failing, check the URL ends with <code>/mcp</code>.</p>
-{{end}}
+  <div class="meta center">Signed in as <b>{{.Email}}</b> ·
+    <form method="post" action="/logout" class="inline"><input type="hidden" value="{{.Next}}" name="next"><button class="link" type="submit">Not you? Switch account</button></form></div>
 </main>
-<script>
-document.querySelectorAll("[data-copy]").forEach((b) => b.onclick = () => {
-  navigator.clipboard.writeText(document.getElementById(b.dataset.copy).textContent).then(() => {
-    b.textContent = "Copied ✓"; setTimeout(() => (b.textContent = "Copy"), 1500);
-  });
-});
-</script>
+{{end}}
+
+{{if eq .Page "oauth_error"}}
+<main id="main" class="auth">
+  <div class="hero"><img src="/logo.svg" alt=""><h1>Can't connect</h1></div>
+  <p class="error" role="alert">{{.Error}}</p>
+  <p class="meta center">Go back to the app and try adding the connector again. If it keeps failing, check that the URL ends with <code>/mcp</code>.</p>
+</main>
+{{end}}
+<script src="/app.js"></script>
 </body>
 </html>

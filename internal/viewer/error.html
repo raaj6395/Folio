@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#131824">
+<title>{{.Title}} · Folio</title>
+<link rel="icon" href="/logo.svg" type="image/svg+xml">
+<script>
+  let view = "";
+  try { view = localStorage.getItem("folio-view-mode") || ""; } catch (e) {}
+  document.documentElement.dataset.theme = view || "dark";
+</script>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="/"><img src="/logo.svg" alt="">Folio</a>
+</header>
+<main id="main" class="auth center">
+  <p class="status-code">{{.Status}}</p>
+  <h1>{{.Title}}</h1>
+  <p class="meta">{{.Message}}</p>
+  <p><a class="btn" href="/">Back to notebooks</a></p>
+</main>
+<script src="/app.js"></script>
+</body>
+</html>

@@ -9,6 +9,7 @@ import (
 	"net/mail"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -82,7 +83,7 @@ type page struct {
 	Tokens                                      []store.Token
 	Grants                                      []store.Grant
 	ClientName, ClientHost, RedirectHost        string
-	LoopbackOnly                                bool
+	LoopbackOnly, Connected                     bool
 	Form                                        url.Values
 }
 
@@ -199,7 +200,11 @@ func (a *Accounts) doLogout(w http.ResponseWriter, r *http.Request) {
 		a.st.DeleteSession(secret.Hash(c.Value))
 	}
 	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteLaxMode})
-	http.Redirect(w, r, "/login", http.StatusSeeOther)
+	target := "/login"
+	if next := safeNext(r.FormValue("next")); next != "/" {
+		target += "?next=" + url.QueryEscape(next)
+	}
+	http.Redirect(w, r, target, http.StatusSeeOther)
 }
 
 func (a *Accounts) loggedIn(w http.ResponseWriter, r *http.Request) (string, string, bool) {
@@ -211,7 +216,7 @@ func (a *Accounts) loggedIn(w http.ResponseWriter, r *http.Request) (string, str
 	return id, email, true
 }
 
-func (a *Accounts) connectPage(w http.ResponseWriter, userID, email, newToken string) {
+func (a *Accounts) connectPage(w http.ResponseWriter, status int, userID, email, newToken, errMsg string) {
 	tokens, err := a.st.Tokens(userID)
 	if err != nil {
 		slog.Error("tokens", "err", err)
@@ -220,12 +225,13 @@ func (a *Accounts) connectPage(w http.ResponseWriter, userID, email, newToken st
 	if err != nil {
 		slog.Error("grants", "err", err)
 	}
-	render(w, http.StatusOK, page{Title: "Connect Claude", Page: "connect", Email: email, Tokens: tokens, Grants: grants, NewToken: newToken, MCPURL: a.publicURL + "/mcp"})
+	connected := len(grants) > 0 || slices.ContainsFunc(tokens, func(t store.Token) bool { return !t.Revoked })
+	render(w, status, page{Title: "Connect Claude", Page: "connect", Email: email, Tokens: tokens, Grants: grants, NewToken: newToken, MCPURL: a.publicURL + "/mcp", Connected: connected, Error: errMsg})
 }
 
 func (a *Accounts) connect(w http.ResponseWriter, r *http.Request) {
 	if id, email, ok := a.loggedIn(w, r); ok {
-		a.connectPage(w, id, email, "")
+		a.connectPage(w, http.StatusOK, id, email, "", "")
 	}
 }
 
@@ -235,7 +241,7 @@ func (a *Accounts) createToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !a.tokens.Allow(id) {
-		http.Error(w, "too many tokens created recently; try again later", http.StatusTooManyRequests)
+		a.connectPage(w, http.StatusTooManyRequests, id, email, "", "You've created a lot of tokens recently. Try again in an hour.")
 		return
 	}
 	name := strings.TrimSpace(r.FormValue("name"))
@@ -248,10 +254,10 @@ func (a *Accounts) createToken(w http.ResponseWriter, r *http.Request) {
 	plain, hash, last4 := secret.NewToken()
 	if _, err := a.st.CreateToken(id, name, hash, last4); err != nil {
 		slog.Error("create token", "err", err)
-		http.Error(w, "could not create token", http.StatusInternalServerError)
+		a.connectPage(w, http.StatusInternalServerError, id, email, "", "Folio couldn't create the token. Try again.")
 		return
 	}
-	a.connectPage(w, id, email, plain)
+	a.connectPage(w, http.StatusOK, id, email, plain, "")
 }
 
 func (a *Accounts) revokeToken(w http.ResponseWriter, r *http.Request) {

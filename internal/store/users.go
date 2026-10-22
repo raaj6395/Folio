@@ -162,6 +162,12 @@ func (s *Store) TokenUser(tokenHash string) (User, string, error) {
 	return u, tokenID, nil
 }
 
+func (s *Store) HasConnection(userID string) (bool, error) {
+	var n int
+	err := s.db.QueryRow(s.q(`SELECT (SELECT count(*) FROM api_tokens WHERE user_id = ? AND revoked_at IS NULL) + (SELECT count(*) FROM oauth_grants WHERE user_id = ? AND revoked_at IS NULL)`), userID, userID).Scan(&n)
+	return n > 0, err
+}
+
 func (s *Store) Tokens(userID string) ([]Token, error) {
 	rows, err := s.db.Query(s.q(`SELECT id, name, last4, created_at, last_used_at, revoked_at FROM api_tokens WHERE user_id = ? AND grant_id IS NULL ORDER BY created_at DESC`), userID)
 	if err != nil {

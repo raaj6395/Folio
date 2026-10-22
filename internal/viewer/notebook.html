@@ -3,104 +3,360 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#131824">
 <title>{{.Title}} · Folio</title>
+<link rel="icon" href="/logo.svg" type="image/svg+xml">
 <script>
   const notebookMode = {{.Mode}};
   let view = "";
   try { view = localStorage.getItem("folio-view-mode") || ""; } catch (e) {}
+  document.documentElement.dataset.auto = notebookMode;
   document.documentElement.dataset.theme = view || notebookMode;
 </script>
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-<header>
-  <a class="home" href="/">← Notebooks</a>
-  <span class="grow" id="title">{{.Title}}</span>
-  <span class="meta">theme <b id="theme">{{.Theme}} · {{.Mode}}</b></span>
-  <span class="meta">v<b id="version">{{.Version}}</b></span>
-  <span class="meta" id="ago"></span>
-  <span class="meta" id="status">connecting…</span>
-  <label class="meta">View
-    <select id="view" title="Only changes how you see the notes here; the notebook itself is unchanged. Auto follows the notebook's own mode.">
-      <option value="">Auto</option>
-      <option value="dark">Dark</option>
-      <option value="light">Light</option>
-    </select>
+<a class="skip" href="#pages">Skip to pages</a>
+<header class="bar">
+  <a class="icon-btn" href="/" title="All notebooks" aria-label="All notebooks">←</a>
+  <button class="icon-btn" type="button" id="outlineBtn" title="Contents (o)" aria-label="Contents" aria-controls="outline" aria-expanded="false" hidden>☰</button>
+  <span class="grow title" id="title">{{.Title}}</span>
+  <span class="live" id="status" role="status">Connecting…</span>
+  <label class="pager" title="Go to page (j / k to step)">
+    <span class="wide-only">Page</span>
+    <input id="pageno" type="number" min="1" value="1" inputmode="numeric" aria-label="Current page">
+    <span>/ <span id="pagecount">–</span></span>
   </label>
-  <a class="btn" id="pdf" href="/n/{{.ID}}/pdf">Download PDF</a>
+  <span class="seg wide-only" role="group" aria-label="Zoom">
+    <button type="button" id="zout" title="Zoom out (−)" aria-label="Zoom out">−</button>
+    <button type="button" id="zreset" title="Fit width (0)">100%</button>
+    <button type="button" id="zin" title="Zoom in (+)" aria-label="Zoom in">+</button>
+  </span>
+  <details class="menu">
+    <summary class="icon-btn" title="More" aria-label="More options">⋯</summary>
+    <div class="pop">
+      <div class="label">Appearance</div>
+      <div class="pad">
+        <div class="seg" role="group" aria-label="Appearance in this browser">
+          <button type="button" data-view="" title="Follow the notebook's own mode">Auto</button>
+          <button type="button" data-view="dark">☾ Dark</button>
+          <button type="button" data-view="light">☀ Light</button>
+        </div>
+        <div class="hint">Only changes how you see it here.</div>
+      </div>
+      <hr>
+      <button class="item" type="button" id="follow" aria-pressed="false">Follow live edits <span class="meta" id="followState">Off</span></button>
+      <button class="item" type="button" id="helpBtn">Keyboard shortcuts <kbd>?</kbd></button>
+      <hr>
+      <div class="label">Notebook</div>
+      <div class="item static">Theme <b id="theme">{{.Theme}} · {{.Mode}}</b></div>
+      <div class="item static">Version <span><b id="version">{{.Version}}</b> · <span id="ago"></span></span></div>
+    </div>
+  </details>
+  <a class="btn" id="pdf" href="/n/{{.ID}}/pdf" title="Download PDF (d)">⤓ <span class="wide-only">Download</span> PDF</a>
 </header>
-<div id="pages"></div>
+<nav class="outline" id="outline" aria-label="Contents" hidden>
+  <div class="label">Contents</div>
+  <ol id="toc"></ol>
+</nav>
+<div id="pages" tabindex="-1"></div>
+
+<dialog id="help" aria-labelledby="helpTitle">
+  <h2 id="helpTitle">Keyboard shortcuts</h2>
+  <table>
+    <tr><td><kbd>j</kbd> <kbd>→</kbd></td><td>Next page</td></tr>
+    <tr><td><kbd>k</kbd> <kbd>←</kbd></td><td>Previous page</td></tr>
+    <tr><td><kbd>g</kbd> / <kbd>G</kbd></td><td>First / last page</td></tr>
+    <tr><td><kbd>+</kbd> <kbd>−</kbd> <kbd>0</kbd></td><td>Zoom in / out / fit</td></tr>
+    <tr><td><kbd>o</kbd></td><td>Show or hide contents</td></tr>
+    <tr><td><kbd>t</kbd></td><td>Switch appearance</td></tr>
+    <tr><td><kbd>f</kbd></td><td>Follow live edits</td></tr>
+    <tr><td><kbd>d</kbd></td><td>Download PDF</td></tr>
+    <tr><td><kbd>?</kbd></td><td>This help</td></tr>
+  </table>
+  <button class="btn secondary block" type="button" data-close>Close</button>
+</dialog>
+<dialog class="lightbox" id="lightbox" aria-label="Page preview"><img alt=""></dialog>
+<dialog id="gone" aria-labelledby="goneTitle">
+  <h2 id="goneTitle">This notebook was deleted</h2>
+  <p class="meta">It no longer exists, so there's nothing more to show here.</p>
+  <a class="btn block" href="/">Back to notebooks</a>
+</dialog>
+
+<script src="/app.js"></script>
 <script>
 const id = {{.ID}};
-const pagesEl = document.getElementById("pages");
-const viewEl = document.getElementById("view");
-const status = document.getElementById("status");
-let sigs = [];
-let updatedAt = null;
-let first = true;
-let es = null;
-viewEl.value = view;
+const root = document.documentElement;
+const $ = (s) => document.getElementById(s);
+const pagesEl = $("pages"), pageNo = $("pageno");
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const zooms = [0.6, 0.8, 1, 1.25, 1.5, 2];
+let sigs = [], updatedAt = null, first = true, restored = false, es = null, count = 0, current = 1;
+let follow = false, zoom = 1;
 const q = () => (view ? "?mode=" + view : "");
+const pageEl = (n) => $("p" + n);
+
+function go(n) {
+  n = Math.min(Math.max(1, n), count);
+  pageEl(n)?.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
+}
+
+function setStatus(text, cls) {
+  $("status").textContent = text;
+  $("status").className = "live " + cls;
+}
+
+function load(div, src, tries = 0) {
+  const sheet = div.querySelector(".sheet");
+  sheet.dataset.want = src;
+  const pre = new Image();
+  pre.onload = () => {
+    if (sheet.dataset.want !== src) return;
+    sheet.querySelector("img").src = src;
+    sheet.classList.add("ready");
+  };
+  pre.onerror = () => {
+    if (tries < 3) setTimeout(() => sheet.dataset.want === src && load(div, src, tries + 1), 3000);
+  };
+  pre.src = src;
+}
+
+const ratios = new Map();
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach((e) => ratios.set(+e.target.id.slice(1), e.intersectionRatio));
+  let best = 0, top = 0;
+  ratios.forEach((r, n) => { if (r > top) { top = r; best = n; } });
+  if (best && best !== current) {
+    current = best;
+    if (document.activeElement !== pageNo) pageNo.value = current;
+    folio.store.set("folio-pos-" + id, current);
+  }
+}, { threshold: [0, 0.1, 0.25, 0.5, 0.75, 1] });
+
+function addPage(n) {
+  const div = document.createElement("section");
+  div.className = "page";
+  div.id = "p" + n;
+  div.setAttribute("aria-label", "Page " + n);
+  div.innerHTML = '<div class="sheet"><img alt="Page ' + n + '"><span class="badge">Updated</span></div><span class="num">' + n + "</span>";
+  div.querySelector(".sheet").onclick = () => {
+    const img = div.querySelector("img");
+    if (!img.src) return;
+    $("lightbox").querySelector("img").src = img.src;
+    $("lightbox").showModal();
+  };
+  pagesEl.appendChild(div);
+  observer.observe(div);
+  return div;
+}
+
+function announce(changed) {
+  changed.forEach((n) => {
+    const sheet = pageEl(n).querySelector(".sheet");
+    sheet.classList.add("changed");
+    setTimeout(() => sheet.classList.remove("changed"), 2500);
+  });
+  const n = changed[0];
+  if (follow) go(n);
+  else folio.toast(changed.length === 1 ? "Page " + n + " was updated" : changed.length + " pages were updated", { label: "Jump to page " + n, run: () => go(n) }, "update");
+}
+
+const toc = $("toc"), outlineEl = $("outline"), outlineBtn = $("outlineBtn");
+const wide = matchMedia("(min-width: 1100px)");
+let headings = [], outlineReady = false, marking = false;
+
+function setOutline(open, save) {
+  open = open && headings.length > 0;
+  outlineEl.hidden = !open;
+  document.body.classList.toggle("outline-open", open);
+  outlineBtn.setAttribute("aria-expanded", String(open));
+  if (save) folio.store.set("folio-outline", open ? "1" : "0");
+  markOutline();
+}
+
+function headingY(h) {
+  const sheet = pageEl(h.page)?.querySelector(".sheet");
+  return sheet ? sheet.getBoundingClientRect().top + (sheet.offsetHeight * h.y_mm) / 297 : Infinity;
+}
+
+function jumpTo(h) {
+  scrollTo({ top: headingY(h) + scrollY - 80, behavior: reduced ? "auto" : "smooth" });
+}
+
+function markOutline() {
+  if (outlineEl.hidden) return;
+  let on = -1;
+  headings.forEach((h, i) => { if (headingY(h) < 120) on = i; });
+  toc.querySelectorAll("a").forEach((a) => {
+    const active = +a.dataset.i === on;
+    if (active && !a.classList.contains("on")) a.scrollIntoView({ block: "nearest" });
+    a.classList.toggle("on", active);
+  });
+}
+
+function renderOutline(list) {
+  if (JSON.stringify(list) !== JSON.stringify(headings)) {
+    headings = list;
+    toc.replaceChildren(...list.map((h, i) => {
+      const li = document.createElement("li");
+      li.className = "l" + h.level;
+      const a = document.createElement("a");
+      a.href = "#p" + h.page;
+      a.dataset.i = i;
+      const text = document.createElement("span");
+      text.textContent = h.text;
+      const pg = document.createElement("span");
+      pg.className = "pg";
+      pg.textContent = h.page;
+      a.append(text, pg);
+      a.onclick = (e) => {
+        e.preventDefault();
+        jumpTo(h);
+        if (!wide.matches) setOutline(false, false);
+      };
+      li.append(a);
+      return li;
+    }));
+  }
+  outlineBtn.hidden = !list.length;
+  if (!outlineReady) {
+    outlineReady = true;
+    setOutline(wide.matches && folio.store.get("folio-outline") !== "0", false);
+  } else if (!list.length) {
+    setOutline(false, false);
+  }
+  markOutline();
+}
+
+addEventListener("scroll", () => {
+  if (marking) return;
+  marking = true;
+  requestAnimationFrame(() => { marking = false; markOutline(); });
+}, { passive: true });
 
 function apply(s) {
-  document.getElementById("title").textContent = s.title;
+  $("title").textContent = s.title;
   document.title = s.title + " · Folio";
-  document.getElementById("theme").textContent = s.theme + " · " + s.mode;
-  document.getElementById("version").textContent = s.version;
-  document.documentElement.dataset.theme = s.mode;
-  document.getElementById("pdf").href = "/n/" + id + "/pdf" + q();
+  $("theme").textContent = s.theme + " · " + s.mode;
+  $("version").textContent = s.version;
+  if (!view) {
+    root.dataset.auto = s.mode;
+    folio.applyView();
+  }
+  $("pdf").href = "/n/" + id + "/pdf" + q();
   updatedAt = new Date(s.updated_at);
   tick();
-  for (let n = 1; n <= s.page_count; n++) {
-    let div = document.getElementById("p" + n);
-    if (!div) {
-      div = document.createElement("div");
-      div.className = "page";
-      div.id = "p" + n;
-      div.innerHTML = '<img alt="Page ' + n + '"><span class="num">' + n + "</span>";
-      pagesEl.appendChild(div);
-    }
+  count = s.page_count;
+  $("pagecount").textContent = count;
+  pageNo.max = count;
+  const changed = [];
+  for (let n = 1; n <= count; n++) {
+    const div = pageEl(n) || addPage(n);
     const sig = s.pages[n - 1];
     if (sigs[n - 1] !== sig) {
-      div.querySelector("img").src = "/n/" + id + "/page/" + n + ".png?v=" + s.version + "-" + sig + (view ? "&mode=" + view : "");
-      if (!first) {
-        div.classList.add("flash");
-        setTimeout(() => div.classList.remove("flash"), 2000);
-      }
+      load(div, "/n/" + id + "/page/" + n + ".png?v=" + s.version + "-" + sig + (view ? "&mode=" + view : ""));
+      if (!first) changed.push(n);
     }
   }
-  for (let n = s.page_count + 1; document.getElementById("p" + n); n++) {
-    document.getElementById("p" + n).remove();
+  for (let n = count + 1; pageEl(n); n++) {
+    observer.unobserve(pageEl(n));
+    ratios.delete(n);
+    pageEl(n).remove();
   }
   sigs = s.pages;
+  renderOutline(s.outline || []);
+  if (changed.length) announce(changed);
+  if (!restored) {
+    restored = true;
+    const saved = +folio.store.get("folio-pos-" + id);
+    if (saved > 1 && saved <= count) pageEl(saved).scrollIntoView({ block: "start" });
+  }
   first = false;
 }
 
 function tick() {
-  if (!updatedAt) return;
-  const sec = Math.max(0, Math.round((Date.now() - updatedAt) / 1000));
-  const txt = sec < 60 ? sec + "s" : sec < 3600 ? Math.round(sec / 60) + "m" : Math.round(sec / 3600) + "h";
-  document.getElementById("ago").textContent = "updated " + txt + " ago";
+  if (updatedAt) $("ago").textContent = "updated " + folio.ago(updatedAt);
 }
-setInterval(tick, 1000);
+setInterval(tick, 15000);
 
 function connect() {
   if (es) es.close();
   sigs = [];
   first = true;
   es = new EventSource("/n/" + id + "/events" + q());
-  es.onopen = () => { status.textContent = "live"; status.className = "meta"; };
-  es.onerror = () => { status.textContent = "reconnecting…"; status.className = "meta off"; };
+  es.onopen = () => setStatus("Live", "on");
+  es.onerror = () => setStatus(navigator.onLine ? "Reconnecting…" : "Offline", "off");
   es.onmessage = (e) => apply(JSON.parse(e.data));
-  es.addEventListener("gone", () => { status.textContent = "notebook deleted"; es.close(); });
+  es.addEventListener("gone", () => {
+    setStatus("Deleted", "off");
+    es.close();
+    $("gone").showModal();
+  });
 }
 
-viewEl.onchange = () => {
-  view = viewEl.value;
-  try { localStorage.setItem("folio-view-mode", view); } catch (e) {}
-  document.documentElement.dataset.theme = view || notebookMode;
-  connect();
+function setZoom(z) {
+  zoom = z;
+  pagesEl.style.setProperty("--zoom", z);
+  pagesEl.toggleAttribute("data-zoomed", z > 1);
+  $("zreset").textContent = Math.round(z * 100) + "%";
+  folio.store.set("folio-zoom", z);
+  pageEl(current)?.scrollIntoView({ block: "start" });
+}
+const stepZoom = (d) => {
+  const i = zooms.indexOf(zoom);
+  setZoom(zooms[Math.min(zooms.length - 1, Math.max(0, (i < 0 ? 2 : i) + d))]);
 };
+
+function setFollow(on, announceIt) {
+  follow = on;
+  folio.store.set("folio-follow", on ? "1" : "");
+  $("follow").setAttribute("aria-pressed", String(on));
+  $("followState").textContent = on ? "On" : "Off";
+  if (announceIt) folio.toast(on ? "Following edits: changed pages scroll into view" : "Stopped following edits");
+}
+
+function cycleView() {
+  const order = ["", "dark", "light"];
+  folio.setView(order[(order.indexOf(view) + 1) % order.length]);
+  folio.toast("Appearance: " + (view || "auto"), null, "view");
+}
+
+pageNo.onchange = () => go(+pageNo.value);
+pageNo.onkeydown = (e) => { if (e.key === "Enter") { go(+pageNo.value); pageNo.blur(); } };
+pageNo.onblur = () => (pageNo.value = current);
+$("zin").onclick = () => stepZoom(1);
+$("zout").onclick = () => stepZoom(-1);
+$("zreset").onclick = () => setZoom(1);
+$("follow").onclick = () => setFollow(!follow, true);
+$("helpBtn").onclick = () => $("help").showModal();
+outlineBtn.onclick = () => setOutline(outlineEl.hidden, true);
+$("lightbox").onclick = () => $("lightbox").close();
+
+document.addEventListener("folio:view", (e) => {
+  view = e.detail;
+  connect();
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest("input, select, textarea") || document.querySelector("dialog[open]")) return;
+  const act = {
+    j: () => go(current + 1), ArrowRight: () => go(current + 1),
+    k: () => go(current - 1), ArrowLeft: () => go(current - 1),
+    g: () => go(1), G: () => go(count),
+    "+": () => stepZoom(1), "=": () => stepZoom(1), "-": () => stepZoom(-1), "0": () => setZoom(1),
+    o: () => setOutline(outlineEl.hidden, true),
+    t: cycleView, f: () => setFollow(!follow, true), d: () => $("pdf").click(),
+    "?": () => $("help").showModal(),
+  }[e.key];
+  if (act) {
+    e.preventDefault();
+    act();
+  }
+});
+
+setFollow(folio.store.get("folio-follow") === "1", false);
+const savedZoom = +folio.store.get("folio-zoom");
+if (zooms.includes(savedZoom)) setZoom(savedZoom);
 connect();
 </script>
 </body>
