@@ -19,7 +19,7 @@ import (
 
 func addPara(t *testing.T, st *store.Store, id, text string) {
 	t.Helper()
-	_, _, err := st.Mutate(id, nil, "append_blocks", "x", func(nb *store.Notebook, bs []model.Block) ([]model.Block, error) {
+	_, _, err := st.Mutate(store.LocalUser, id, nil, "append_blocks", "x", func(nb *store.Notebook, bs []model.Block) ([]model.Block, error) {
 		b, _ := model.Parse(json.RawMessage(`{"type":"paragraph","text":"` + text + `"}`))
 		b.ID = model.NewID("b_")
 		return model.InsertAt(bs, len(bs), []model.Block{b}), nil
@@ -37,9 +37,9 @@ func TestViewer(t *testing.T) {
 	}
 	defer st.Close()
 	lb, _ := layout.New(home)
-	nb, _ := st.CreateNotebook("Viewer <test>", "clean", "plain", "light")
+	nb, _ := st.CreateNotebook(store.LocalUser, "Viewer <test>", "clean", "plain", "light")
 	addPara(t, st, nb.ID, "first")
-	srv := httptest.NewServer(New(st, lb))
+	srv := httptest.NewServer(New(st, lb, Local, false))
 	defer srv.Close()
 
 	body := get(t, srv.URL+"/")
@@ -63,7 +63,7 @@ func TestViewer(t *testing.T) {
 	if darkPNG == lightPNG || !strings.HasPrefix(darkPNG, "\x89PNG") {
 		t.Fatal("?mode=dark must render a different page")
 	}
-	if n, _ := st.Notebook(nb.ID); n.Mode != "light" || n.Version != 2 {
+	if n, _ := st.Notebook(store.LocalUser, nb.ID); n.Mode != "light" || n.Version != 2 {
 		t.Fatalf("view override must not change the notebook: %+v", n)
 	}
 	if resp, _ := http.Get(srv.URL + "/n/" + nb.ID + "/page/9.png"); resp.StatusCode != 404 {

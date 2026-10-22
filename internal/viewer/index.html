@@ -14,6 +14,9 @@
 <body>
 <header>
   <span class="grow">Folio notebooks</span>
+  {{if .Auth}}<a class="meta" href="/connect">Connect Claude</a>
+  <span class="meta">{{.Email}}</span>
+  <form method="post" action="/logout" style="margin:0"><button class="link" type="submit">Log out</button></form>{{end}}
   <label class="meta">View
     <select id="view" title="How notes look in this browser; notebooks themselves are unchanged">
       <option value="">Auto</option>
@@ -23,8 +26,8 @@
   </label>
 </header>
 <main>
-{{range .}}<a class="nb" href="/n/{{.ID}}"><span>{{.Title}}</span><span class="meta">{{.Theme}} · {{.Mode}} · v{{.Version}} · {{.UpdatedAt.Local.Format "2006-01-02 15:04"}}</span></a>
-{{else}}<p class="empty">No notebooks yet. Ask Claude to make some notes with Folio.</p>{{end}}
+{{range .Notebooks}}<a class="nb" href="/n/{{.ID}}"><span>{{.Title}}</span><span class="meta">{{.Theme}} · {{.Mode}} · v{{.Version}} · {{.UpdatedAt.Local.Format "2006-01-02 15:04"}}</span></a>
+{{else}}<p class="empty">No notebooks yet. {{if .Auth}}<a href="/connect">Connect Claude</a>, then ask it to make some notes with Folio.{{else}}Ask Claude to make some notes with Folio.{{end}}</p>{{end}}
 </main>
 <script>
   const viewEl = document.getElementById("view");

@@ -1,6 +1,7 @@
 package viewer
 
 import (
+	"context"
 	"crypto/sha256"
 	_ "embed"
 	"encoding/hex"
@@ -10,6 +11,7 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"slices"
 	"strconv"
@@ -41,25 +43,52 @@ var (
 )
 
 type Server struct {
-	st *store.Store
-	lb *layout.Builder
+	st   *store.Store
+	lb   *layout.Builder
+	user func(*http.Request) (id, email string)
+	auth bool
 }
 
-func New(st *store.Store, lb *layout.Builder) http.Handler {
-	s := &Server{st, lb}
+type uidKey struct{}
+
+func uid(r *http.Request) string { return r.Context().Value(uidKey{}).(string) }
+
+func Local(*http.Request) (string, string) { return store.LocalUser, "" }
+
+func New(st *store.Store, lb *layout.Builder, user func(*http.Request) (id, email string), auth bool) *http.ServeMux {
+	s := &Server{st: st, lb: lb, user: user, auth: auth}
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /{$}", s.index)
+	mux.HandleFunc("GET /{$}", s.require(true, s.index))
 	mux.HandleFunc("GET /style.css", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/css; charset=utf-8")
 		fmt.Fprint(w, styleCSS)
 	})
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "folio viewer ok") })
-	mux.HandleFunc("GET /n/{id}", s.notebook)
-	mux.HandleFunc("GET /n/{id}/events", s.events)
-	mux.HandleFunc("GET /n/{id}/page/{file}", s.page)
-	mux.HandleFunc("GET /n/{id}/pdf", s.pdf)
+	mux.HandleFunc("GET /n/{id}", s.require(true, s.notebook))
+	mux.HandleFunc("GET /n/{id}/events", s.require(false, s.events))
+	mux.HandleFunc("GET /n/{id}/page/{file}", s.require(false, s.page))
+	mux.HandleFunc("GET /n/{id}/pdf", s.require(true, s.pdf))
 	return mux
 }
+
+func (s *Server) require(redirect bool, h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, email := s.user(r)
+		if id == "" {
+			if redirect {
+				http.Redirect(w, r, "/login?next="+url.QueryEscape(r.URL.RequestURI()), http.StatusSeeOther)
+				return
+			}
+			http.Error(w, "login required", http.StatusUnauthorized)
+			return
+		}
+		ctx := context.WithValue(r.Context(), uidKey{}, id)
+		ctx = context.WithValue(ctx, emailKey{}, email)
+		h(w, r.WithContext(ctx))
+	}
+}
+
+type emailKey struct{}
 
 type State struct {
 	ID        string    `json:"id"`
@@ -79,12 +108,12 @@ func viewMode(r *http.Request, nb *store.Notebook) {
 }
 
 func (s *Server) load(r *http.Request) (store.Notebook, []model.Block, error) {
-	nb, err := s.st.Notebook(r.PathValue("id"))
+	nb, err := s.st.Notebook(uid(r), r.PathValue("id"))
 	if err != nil {
 		return nb, nil, err
 	}
 	viewMode(r, &nb)
-	bs, err := s.st.Blocks(nb.ID)
+	bs, err := s.st.Blocks(uid(r), nb.ID)
 	return nb, bs, err
 }
 
@@ -130,20 +159,23 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 }
 
 func (s *Server) index(w http.ResponseWriter, r *http.Request) {
-	nbs, err := s.st.Notebooks()
+	nbs, err := s.st.Notebooks(uid(r))
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
-	indexTmpl.Execute(w, nbs)
+	email, _ := r.Context().Value(emailKey{}).(string)
+	w.Header().Set("Cache-Control", "no-store")
+	indexTmpl.Execute(w, map[string]any{"Notebooks": nbs, "Email": email, "Auth": s.auth})
 }
 
 func (s *Server) notebook(w http.ResponseWriter, r *http.Request) {
-	nb, err := s.st.Notebook(r.PathValue("id"))
+	nb, err := s.st.Notebook(uid(r), r.PathValue("id"))
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
+	w.Header().Set("Cache-Control", "no-store")
 	notebookTmpl.Execute(w, nb)
 }
 
@@ -162,7 +194,7 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	beat := time.NewTicker(15 * time.Second)
 	defer beat.Stop()
 	for {
-		if nb, err := s.st.Notebook(id); err != nil {
+		if nb, err := s.st.Notebook(uid(r), id); err != nil {
 			fmt.Fprintf(w, "event: gone\ndata: {}\n\n")
 			fl.Flush()
 			return
@@ -218,7 +250,7 @@ func (s *Server) page(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "image/png")
-	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
 	w.Write(pngs[n-1])
 }
 

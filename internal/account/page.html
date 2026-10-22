@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} · Folio</title>
+<script>
+  let view = "";
+  try { view = localStorage.getItem("folio-view-mode") || ""; } catch (e) {}
+  document.documentElement.dataset.theme = view === "light" ? "light" : "dark";
+</script>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <a class="home" href="/">📒 Folio</a>
+  <span class="grow"></span>
+  {{if .Email}}<a class="meta" href="/">My notebooks</a><span class="meta">{{.Email}}</span>
+  <form method="post" action="/logout" style="margin:0"><button class="link" type="submit">Log out</button></form>{{end}}
+</header>
+<main class="narrow">
+{{if eq .Page "login" "signup"}}
+  <h1>{{if eq .Page "login"}}Log in{{else}}Create your account{{end}}</h1>
+  <p class="meta">{{if eq .Page "login"}}Your notebooks, typeset by Claude.{{else}}Sign up, create a token, paste it into Claude, and every note Claude writes lands in your private notebook.{{end}}</p>
+  {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+  <form method="post" action="/{{.Page}}" class="card">
+    <input type="hidden" name="next" value="{{.Next}}">
+    <label>Email <input type="email" name="email" value="{{.EmailInput}}" required autocomplete="email"></label>
+    <label>Password <input type="password" name="password" required minlength="10" autocomplete="{{if eq .Page "login"}}current-password{{else}}new-password{{end}}"></label>
+    {{if eq .Page "signup"}}<p class="meta">At least 10 characters.</p>{{end}}
+    <button class="btn" type="submit">{{if eq .Page "login"}}Log in{{else}}Sign up{{end}}</button>
+  </form>
+  <p class="meta">{{if eq .Page "login"}}New here? <a href="/signup">Create an account</a>{{else}}Already have an account? <a href="/login">Log in</a>{{end}}</p>
+{{end}}
+{{if eq .Page "connect"}}
+  <h1>Connect Claude</h1>
+  {{if .NewToken}}
+  <div class="card highlight">
+    <h2>Your new token</h2>
+    <p class="error">Copy it now. Folio shows it only once.</p>
+    <div class="copy"><code id="tok">{{.NewToken}}</code><button class="btn" type="button" data-copy="tok">Copy</button></div>
+    <h3>Claude Code</h3>
+    <p class="meta">Run this in your terminal:</p>
+    <div class="copy"><pre id="cmd">claude mcp add -s user --transport http folio {{.MCPURL}} --header "Authorization: Bearer {{.NewToken}}"</pre><button class="btn" type="button" data-copy="cmd">Copy</button></div>
+    <p class="meta">Then check with <code>claude mcp list</code>: <code>folio</code> should show <b>Connected</b>. Ask Claude: <i>"Make 1 page of notes on DNS using Folio."</i></p>
+    <h3>Claude desktop app</h3>
+    <p class="meta">Needs Node.js. Add this to <code>claude_desktop_config.json</code> under <code>mcpServers</code>, then restart the app:</p>
+    <div class="copy"><pre id="desk">"folio": {
+  "command": "npx",
+  "args": ["-y", "mcp-remote", "{{.MCPURL}}", "--header", "Authorization: Bearer {{.NewToken}}"]
+}</pre><button class="btn" type="button" data-copy="desk">Copy</button></div>
+    <p class="meta">The Claude web and phone app need OAuth, which is coming next.</p>
+  </div>
+  {{end}}
+  <form method="post" action="/connect/tokens" class="card row">
+    <label class="grow">Token name <input type="text" name="name" placeholder="e.g. MacBook Claude Code" maxlength="60"></label>
+    <button class="btn" type="submit">Create token</button>
+  </form>
+  <h2>Your tokens</h2>
+  {{if .Tokens}}<table class="tokens">
+    <tr><th>Name</th><th>Token</th><th>Created</th><th>Last used</th><th></th></tr>
+    {{range .Tokens}}<tr{{if .Revoked}} class="revoked"{{end}}>
+      <td>{{.Name}}</td><td><code>folio_pat_…{{.Last4}}</code></td>
+      <td>{{.CreatedAt.Local.Format "2006-01-02"}}</td>
+      <td>{{if .LastUsedAt.IsZero}}never{{else}}{{.LastUsedAt.Local.Format "2006-01-02 15:04"}}{{end}}</td>
+      <td>{{if .Revoked}}revoked{{else}}<form method="post" action="/connect/tokens/{{.ID}}/revoke" style="margin:0"><button class="link danger" type="submit">Revoke</button></form>{{end}}</td>
+    </tr>{{end}}
+  </table>{{else}}<p class="meta">No tokens yet. Create one to connect Claude.</p>{{end}}
+{{end}}
+</main>
+<script>
+document.querySelectorAll("[data-copy]").forEach((b) => b.onclick = () => {
+  navigator.clipboard.writeText(document.getElementById(b.dataset.copy).textContent).then(() => {
+    b.textContent = "Copied ✓"; setTimeout(() => (b.textContent = "Copy"), 1500);
+  });
+});
+</script>
+</body>
+</html>

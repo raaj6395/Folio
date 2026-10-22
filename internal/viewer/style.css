@@ -50,3 +50,24 @@ a.nb:hover { border-color: var(--accent); }
 .page .num { position: absolute; right: -36px; top: 0; color: var(--muted); font-size: 12px; }
 .page.flash { outline-color: #f59e0b; transition: none; }
 @media (max-width: 1000px) { .page .num { display: none; } }
+
+main.narrow { max-width: 640px; }
+h1 { font-size: 24px; margin: 8px 0 4px; }
+h2 { font-size: 17px; margin: 24px 0 8px; }
+h3 { font-size: 14px; margin: 18px 0 4px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 18px; margin: 16px 0; box-shadow: var(--bar-shadow); }
+.card.highlight { border-color: var(--accent); }
+.card.row { display: flex; gap: 12px; align-items: flex-end; }
+form.card label { display: block; margin-bottom: 12px; font-weight: 600; }
+form.card.row label { margin: 0; }
+input[type=email], input[type=password], input[type=text] { display: block; width: 100%; box-sizing: border-box; margin-top: 6px; padding: 9px 10px; font: inherit; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--ink); }
+button.btn { background: var(--accent); color: var(--accent-ink); border: 0; padding: 8px 14px; border-radius: 6px; font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; }
+button.link { background: none; border: 0; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; padding: 0; }
+button.link.danger { color: var(--danger); }
+.error { color: var(--danger); font-weight: 600; }
+.copy { display: flex; gap: 8px; align-items: flex-start; margin: 6px 0; }
+.copy code, .copy pre { flex: 1; min-width: 0; margin: 0; padding: 9px 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; white-space: pre-wrap; word-break: break-all; }
+table.tokens { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.tokens th, table.tokens td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); }
+table.tokens tr.revoked td { color: var(--muted); text-decoration: line-through; }
+table.tokens tr.revoked td:last-child { text-decoration: none; }

@@ -48,7 +48,7 @@ func run(t *testing.T, st *store.Store) {
 	srv := httptest.NewUnstartedServer(nil)
 	srv.Start()
 	defer srv.Close()
-	srv.Config.Handler = Handler(st, lb, home, srv.URL, false)
+	srv.Config.Handler = Handler(st, lb, Options{Home: home, PublicURL: srv.URL})
 
 	ctx := context.Background()
 	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "0"}, nil).Connect(ctx, &mcp.StreamableClientTransport{Endpoint: srv.URL + "/mcp"}, nil)
@@ -100,7 +100,7 @@ func run(t *testing.T, st *store.Store) {
 	}
 	var exp struct{ Path, URL string }
 	call("export_pdf", map[string]any{"notebook_id": nb.ID, "path": filepath.Join(home, "x.pdf")}, &exp)
-	if exp.URL != srv.URL+"/n/"+nb.ID+"/pdf" {
+	if exp.URL != srv.URL+"/n/"+nb.ID+"/pdf" || exp.Path != "" {
 		t.Fatalf("export url: %+v", exp)
 	}
 	if body := get(t, exp.URL); !strings.HasPrefix(body, "%PDF") {
@@ -145,7 +145,7 @@ func TestPublicModeAcceptsForeignHost(t *testing.T) {
 	lb, _ := layout.New(t.TempDir())
 	body := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"x","version":"0"}}}`
 	for _, public := range []bool{false, true} {
-		srv := httptest.NewServer(Handler(st, lb, t.TempDir(), "", public))
+		srv := httptest.NewServer(Handler(st, lb, Options{Home: t.TempDir(), Public: public}))
 		req, _ := http.NewRequest("POST", srv.URL+"/mcp", strings.NewReader(body))
 		req.Host = "folio-1i2o.onrender.com"
 		req.Header.Set("Content-Type", "application/json")
@@ -176,7 +176,7 @@ func TestClientSurvivesServerRestart(t *testing.T) {
 	lb, _ := layout.New(home)
 	srv := httptest.NewServer(nil)
 	defer srv.Close()
-	srv.Config.Handler = Handler(st, lb, home, srv.URL, false)
+	srv.Config.Handler = Handler(st, lb, Options{Home: home, PublicURL: srv.URL})
 
 	ctx := context.Background()
 	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "0"}, nil).Connect(ctx, &mcp.StreamableClientTransport{Endpoint: srv.URL + "/mcp"}, nil)
@@ -187,7 +187,7 @@ func TestClientSurvivesServerRestart(t *testing.T) {
 	if _, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "list_notebooks", Arguments: map[string]any{}}); err != nil {
 		t.Fatal(err)
 	}
-	srv.Config.Handler = Handler(st, lb, home, srv.URL, false)
+	srv.Config.Handler = Handler(st, lb, Options{Home: home, PublicURL: srv.URL})
 	res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "list_notebooks", Arguments: map[string]any{}})
 	if err != nil {
 		t.Fatalf("call after server restart: %v", err)
@@ -202,7 +202,7 @@ func TestHealthzShowsCommit(t *testing.T) {
 	defer st.Close()
 	lb, _ := layout.New(t.TempDir())
 	t.Setenv("RENDER_GIT_COMMIT", "f9616d8c0ffee")
-	srv := httptest.NewServer(Handler(st, lb, t.TempDir(), "", false))
+	srv := httptest.NewServer(Handler(st, lb, Options{Home: t.TempDir()}))
 	defer srv.Close()
 	if body := get(t, srv.URL+"/healthz"); body != "folio ok (sqlite) commit f9616d8" {
 		t.Fatalf("healthz: %q", body)
