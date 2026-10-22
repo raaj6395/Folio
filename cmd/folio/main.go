@@ -30,9 +30,10 @@ const usage = `usage: folio <command>
 commands:
   mcp                         run the MCP server over stdio
   serve [--port 7420]         run the local web viewer
-  http [--unsafe-public]      serve MCP over HTTP (/mcp) plus the viewer; address from FOLIO_HTTP_ADDR
+  http [--no-auth]            serve MCP over HTTP (/mcp), accounts and the viewer; address from FOLIO_HTTP_ADDR or $PORT
+  admin adopt|reset-password|disable-user|require-owners ...   account administration (uses FOLIO_DB_URL)
   export <notebook-id> [-o file.pdf]
-  import [--from file.db] [--dry-run] [--include-deleted]   copy notebooks from a SQLite file into FOLIO_DB_URL
+  import [--from file.db] [--owner email] [--dry-run] [--include-deleted]   copy notebooks from a SQLite file into FOLIO_DB_URL
   doctor                      check the environment
 `
 
@@ -106,7 +107,10 @@ func main() {
 		}
 		st, lb := open()
 		defer st.Close()
-		if err := mcpserver.New(st, lb, home(), "").Run(context.Background(), &mcp.StdioTransport{}); err != nil {
+		if err := st.EnsureLocalUser(); err != nil {
+			fatal(err)
+		}
+		if err := mcpserver.New(st, lb, home(), "", store.LocalUser).Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 			fatal(err)
 		}
 	case "serve":
@@ -119,13 +123,16 @@ func main() {
 		lb.Root = "build-viewer"
 		addr := fmt.Sprintf("127.0.0.1:%d", *port)
 		fmt.Fprintf(os.Stderr, "Folio viewer on http://%s\n", addr)
-		if err := http.ListenAndServe(addr, viewer.New(st, lb)); err != nil {
+		if err := st.EnsureLocalUser(); err != nil {
+			fatal(err)
+		}
+		if err := http.ListenAndServe(addr, viewer.New(st, lb, viewer.Local, false)); err != nil {
 			fatal(err)
 		}
 	case "http":
 		setupLog(true)
 		fs := flag.NewFlagSet("http", flag.ExitOnError)
-		unsafe := fs.Bool("unsafe-public", false, "allow a non-loopback listen address (there is NO authentication yet)")
+		noAuth := fs.Bool("no-auth", false, "local development only: no login, everything belongs to the local user (loopback addresses only)")
 		fs.Parse(os.Args[2:])
 		addr := os.Getenv("FOLIO_HTTP_ADDR")
 		if addr == "" && os.Getenv("PORT") != "" {
@@ -134,25 +141,28 @@ func main() {
 		if addr == "" {
 			addr = "127.0.0.1:8080"
 		}
-		if !httpserver.IsLoopback(addr) {
-			if !*unsafe {
-				fatal(fmt.Errorf("refusing to listen on %s: Folio has no authentication yet, so only loopback addresses (127.0.0.1, ::1, localhost) are allowed; pass --unsafe-public to override", addr))
-			}
-			fmt.Fprintf(os.Stderr, "WARNING: listening on %s with NO authentication. Anyone who can reach this address can read and change every notebook.\n", addr)
+		public := !httpserver.IsLoopback(addr)
+		if public && *noAuth {
+			fatal(fmt.Errorf("refusing to listen on %s with --no-auth: without login, only loopback addresses (127.0.0.1, ::1, localhost) are allowed", addr))
 		}
-		public := os.Getenv("FOLIO_PUBLIC_URL")
-		if public == "" {
-			public = os.Getenv("RENDER_EXTERNAL_URL")
+		publicURL := os.Getenv("FOLIO_PUBLIC_URL")
+		if publicURL == "" {
+			publicURL = os.Getenv("RENDER_EXTERNAL_URL")
 		}
-		if public == "" {
-			public = "http://" + addr
+		if publicURL == "" {
+			publicURL = "http://" + addr
 		}
 		if _, err := doctor.TypstVersion(); err != nil {
 			fatal(err)
 		}
 		st, lb := open()
 		defer st.Close()
-		srv := &http.Server{Addr: addr, Handler: httpserver.Handler(st, lb, home(), public, !httpserver.IsLoopback(addr))}
+		if *noAuth {
+			if err := st.EnsureLocalUser(); err != nil {
+				fatal(err)
+			}
+		}
+		srv := &http.Server{Addr: addr, Handler: httpserver.Handler(st, lb, httpserver.Options{Home: home(), PublicURL: publicURL, Public: public, Auth: !*noAuth})}
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 		go func() {
@@ -161,7 +171,11 @@ func main() {
 			defer cancel()
 			srv.Shutdown(shutdown)
 		}()
-		fmt.Fprintf(os.Stderr, "Folio HTTP on %s (MCP: %s/mcp, viewer: %s/, storage: %s)\n", addr, public, public, describeDSN(dsn()))
+		mode := "accounts + tokens"
+		if *noAuth {
+			mode = "NO AUTH (local development)"
+		}
+		fmt.Fprintf(os.Stderr, "Folio HTTP on %s (MCP: %s/mcp, site: %s/, auth: %s, storage: %s)\n", addr, publicURL, publicURL, mode, describeDSN(dsn()))
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			fatal(err)
 		}
@@ -171,6 +185,7 @@ func main() {
 		fs := flag.NewFlagSet("import", flag.ExitOnError)
 		from := fs.String("from", filepath.Join(home(), "folio.db"), "SQLite file to import from")
 		dry := fs.Bool("dry-run", false, "only list what would be imported")
+		ownerEmail := fs.String("owner", "", "email of the account that will own the imported notebooks (default: no owner; adopt later)")
 		deleted := fs.Bool("include-deleted", false, "also import soft-deleted notebooks")
 		fs.Parse(os.Args[2:])
 		if _, err := os.Stat(*from); err != nil {
@@ -187,7 +202,15 @@ func main() {
 		}
 		defer dst.Close()
 		fmt.Printf("importing from sqlite %s into %s%s\n", *from, describeDSN(dsn()), map[bool]string{true: " (dry run)"}[*dry])
-		res, err := dst.ImportFrom(src, *deleted, *dry)
+		owner := ""
+		if *ownerEmail != "" {
+			u, err := dst.UserByEmail(*ownerEmail)
+			if err != nil {
+				fatal(fmt.Errorf("owner %s: %w", *ownerEmail, err))
+			}
+			owner = u.ID
+		}
+		res, err := dst.ImportFrom(src, owner, *deleted, *dry)
 		failed := false
 		for _, r := range res {
 			fmt.Printf("  %-12s %-20s %s\n", r.ID, r.Status, r.Title)
@@ -199,6 +222,9 @@ func main() {
 		if failed {
 			os.Exit(1)
 		}
+	case "admin":
+		setupLog(true)
+		runAdmin(os.Args[2:])
 	case "export":
 		setupLog(false)
 		fs := flag.NewFlagSet("export", flag.ExitOnError)
@@ -230,8 +256,8 @@ func main() {
 					return "", fmt.Errorf("%s: %w", describeDSN(dsn()), err)
 				}
 				defer st.Close()
-				nbs, err := st.Notebooks()
-				return fmt.Sprintf("%d notebook(s) in %s", len(nbs), describeDSN(dsn())), err
+				users, nbs, orphans, err := st.Counts()
+				return fmt.Sprintf("%d account(s), %d notebook(s), %d without owner, in %s", users, nbs, orphans, describeDSN(dsn())), err
 			}},
 			{Name: "fonts", Run: func() (string, error) {
 				lb, err := layout.New(h)

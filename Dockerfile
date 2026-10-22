@@ -19,4 +19,4 @@ COPY --from=build /out/folio /usr/local/bin/folio
 USER folio
 ENV FOLIO_HOME=/tmp/folio
 EXPOSE 10000
-CMD ["folio", "http", "--unsafe-public"]
+CMD ["folio", "http"]
