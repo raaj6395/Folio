@@ -15,7 +15,10 @@ func OpenTestPostgres(t testing.TB) *Store {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.db.Exec(`TRUNCATE notebooks, blocks, snapshots`); err != nil {
+	if _, err := s.db.Exec(`TRUNCATE notebooks, blocks, snapshots, api_tokens, web_sessions, users`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.EnsureLocalUser(); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { s.Close() })

@@ -32,7 +32,7 @@ func para(text string) model.Block {
 
 func appendText(t *testing.T, s *Store, id string, texts ...string) {
 	t.Helper()
-	_, _, err := s.Mutate(id, nil, "append_blocks", "append", func(nb *Notebook, bs []model.Block) ([]model.Block, error) {
+	_, _, err := s.Mutate(LocalUser, id, nil, "append_blocks", "append", func(nb *Notebook, bs []model.Block) ([]model.Block, error) {
 		var add []model.Block
 		for _, x := range texts {
 			add = append(add, para(x))
@@ -46,7 +46,7 @@ func appendText(t *testing.T, s *Store, id string, texts ...string) {
 
 func texts(t *testing.T, s *Store, id string) string {
 	t.Helper()
-	bs, err := s.Blocks(id)
+	bs, err := s.Blocks(LocalUser, id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func texts(t *testing.T, s *Store, id string) string {
 
 func TestMutateUndoRestore(t *testing.T) {
 	eachBackend(t, func(t *testing.T, s *Store) {
-		nb, err := s.CreateNotebook("T", "clean", "plain", "light")
+		nb, err := s.CreateNotebook(LocalUser, "T", "clean", "plain", "light")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -68,34 +68,34 @@ func TestMutateUndoRestore(t *testing.T) {
 		if got := texts(t, s, nb.ID); got != "abc" {
 			t.Fatalf("got %q", got)
 		}
-		if _, _, err := s.Undo(nb.ID, nil); err != nil {
+		if _, _, err := s.Undo(LocalUser, nb.ID, nil); err != nil {
 			t.Fatal(err)
 		}
 		if got := texts(t, s, nb.ID); got != "a" {
 			t.Fatalf("after undo got %q", got)
 		}
-		if _, _, err := s.Undo(nb.ID, nil); err != nil {
+		if _, _, err := s.Undo(LocalUser, nb.ID, nil); err != nil {
 			t.Fatal(err)
 		}
 		if got := texts(t, s, nb.ID); got != "" {
 			t.Fatalf("after 2nd undo got %q", got)
 		}
-		if _, _, err := s.Undo(nb.ID, nil); err == nil {
+		if _, _, err := s.Undo(LocalUser, nb.ID, nil); err == nil {
 			t.Fatal("undo past the start should fail")
 		}
-		if _, _, err := s.Restore(nb.ID, 3, nil); err != nil {
+		if _, _, err := s.Restore(LocalUser, nb.ID, 3, nil); err != nil {
 			t.Fatal(err)
 		}
 		if got := texts(t, s, nb.ID); got != "abc" {
 			t.Fatalf("after restore got %q", got)
 		}
-		if _, _, err := s.Undo(nb.ID, nil); err != nil {
+		if _, _, err := s.Undo(LocalUser, nb.ID, nil); err != nil {
 			t.Fatal(err)
 		}
 		if got := texts(t, s, nb.ID); got != "" {
 			t.Fatalf("undo of restore got %q", got)
 		}
-		vs, _ := s.Versions(nb.ID, 3)
+		vs, _ := s.Versions(LocalUser, nb.ID, 3)
 		if len(vs) != 3 || vs[0].Version != 7 || vs[0].ToolName != "undo" {
 			t.Fatalf("versions: %+v", vs)
 		}
@@ -104,9 +104,9 @@ func TestMutateUndoRestore(t *testing.T) {
 
 func TestExpectedVersionConflict(t *testing.T) {
 	eachBackend(t, func(t *testing.T, s *Store) {
-		nb, _ := s.CreateNotebook("T", "clean", "plain", "light")
+		nb, _ := s.CreateNotebook(LocalUser, "T", "clean", "plain", "light")
 		stale := 0
-		_, _, err := s.Mutate(nb.ID, &stale, "x", "x", func(nb *Notebook, bs []model.Block) ([]model.Block, error) { return bs, nil })
+		_, _, err := s.Mutate(LocalUser, nb.ID, &stale, "x", "x", func(nb *Notebook, bs []model.Block) ([]model.Block, error) { return bs, nil })
 		if !errors.Is(err, ErrConflict) {
 			t.Fatalf("got %v", err)
 		}
@@ -115,7 +115,7 @@ func TestExpectedVersionConflict(t *testing.T) {
 
 func TestSnapshotPruning(t *testing.T) {
 	eachBackend(t, func(t *testing.T, s *Store) {
-		nb, _ := s.CreateNotebook("T", "clean", "plain", "light")
+		nb, _ := s.CreateNotebook(LocalUser, "T", "clean", "plain", "light")
 		for range keepSnapshots + 10 {
 			appendText(t, s, nb.ID, "x")
 		}
@@ -129,14 +129,14 @@ func TestSnapshotPruning(t *testing.T) {
 
 func TestSoftDelete(t *testing.T) {
 	eachBackend(t, func(t *testing.T, s *Store) {
-		nb, _ := s.CreateNotebook("T", "clean", "plain", "light")
-		if err := s.Delete(nb.ID); err != nil {
+		nb, _ := s.CreateNotebook(LocalUser, "T", "clean", "plain", "light")
+		if err := s.Delete(LocalUser, nb.ID); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := s.Notebook(nb.ID); !errors.Is(err, ErrNotFound) {
+		if _, err := s.Notebook(LocalUser, nb.ID); !errors.Is(err, ErrNotFound) {
 			t.Fatalf("got %v", err)
 		}
-		if nbs, _ := s.Notebooks(); len(nbs) != 0 {
+		if nbs, _ := s.Notebooks(LocalUser); len(nbs) != 0 {
 			t.Fatal("deleted notebook still listed")
 		}
 	})
@@ -144,8 +144,8 @@ func TestSoftDelete(t *testing.T) {
 
 func TestPositionsSortByteOrder(t *testing.T) {
 	eachBackend(t, func(t *testing.T, s *Store) {
-		nb, _ := s.CreateNotebook("T", "clean", "plain", "light")
-		_, _, err := s.Mutate(nb.ID, nil, "x", "x", func(_ *Notebook, _ []model.Block) ([]model.Block, error) {
+		nb, _ := s.CreateNotebook(LocalUser, "T", "clean", "plain", "light")
+		_, _, err := s.Mutate(LocalUser, nb.ID, nil, "x", "x", func(_ *Notebook, _ []model.Block) ([]model.Block, error) {
 			var bs []model.Block
 			for _, pos := range []string{"z1", "a", "Z", "a0b", "_"} {
 				b := para(pos)

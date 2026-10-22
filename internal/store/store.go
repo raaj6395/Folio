@@ -53,6 +53,32 @@ var pgMigrations = []string{
 		timestamp TEXT NOT NULL,
 		PRIMARY KEY (notebook_id, version)
 	)`,
+	`CREATE TABLE users (
+		id TEXT PRIMARY KEY,
+		email TEXT NOT NULL UNIQUE,
+		password_hash TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		disabled_at TEXT
+	);
+	CREATE TABLE web_sessions (
+		id_hash TEXT PRIMARY KEY,
+		user_id TEXT NOT NULL REFERENCES users(id),
+		created_at TEXT NOT NULL,
+		expires_at TEXT NOT NULL
+	);
+	CREATE TABLE api_tokens (
+		id TEXT PRIMARY KEY,
+		user_id TEXT NOT NULL REFERENCES users(id),
+		name TEXT NOT NULL,
+		token_hash TEXT NOT NULL UNIQUE,
+		last4 TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		last_used_at TEXT,
+		expires_at TEXT,
+		revoked_at TEXT
+	);
+	ALTER TABLE notebooks ADD COLUMN user_id TEXT REFERENCES users(id);
+	CREATE INDEX notebooks_user ON notebooks(user_id, updated_at)`,
 }
 
 var migrations = []string{
@@ -91,12 +117,56 @@ var migrations = []string{
 	);`,
 	`ALTER TABLE notebooks ADD COLUMN mode TEXT NOT NULL DEFAULT 'light';
 	ALTER TABLE snapshots ADD COLUMN mode TEXT NOT NULL DEFAULT 'light';`,
+	`CREATE TABLE users (
+		id TEXT PRIMARY KEY,
+		email TEXT NOT NULL UNIQUE,
+		password_hash TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		disabled_at TEXT
+	);
+	CREATE TABLE web_sessions (
+		id_hash TEXT PRIMARY KEY,
+		user_id TEXT NOT NULL REFERENCES users(id),
+		created_at TEXT NOT NULL,
+		expires_at TEXT NOT NULL
+	);
+	CREATE TABLE api_tokens (
+		id TEXT PRIMARY KEY,
+		user_id TEXT NOT NULL REFERENCES users(id),
+		name TEXT NOT NULL,
+		token_hash TEXT NOT NULL UNIQUE,
+		last4 TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		last_used_at TEXT,
+		expires_at TEXT,
+		revoked_at TEXT
+	);
+	INSERT INTO users (id, email, password_hash, created_at) VALUES ('u_local', 'local@folio.invalid', '!', '2026-01-01T00:00:00.000000000Z');
+	ALTER TABLE notebooks ADD COLUMN user_id TEXT REFERENCES users(id);
+	UPDATE notebooks SET user_id = 'u_local';
+	CREATE INDEX notebooks_user ON notebooks(user_id, updated_at);`,
 }
+
+const LocalUser = "u_local"
 
 var (
 	ErrNotFound = errors.New("not found")
 	ErrConflict = errors.New("version conflict")
+	ErrQuota    = errors.New("limit reached")
 )
+
+var (
+	MaxNotebooks = 100
+	MaxBlocks    = 2000
+)
+
+func countBlocks(bs []model.Block) int {
+	n := len(bs)
+	for _, b := range bs {
+		n += len(b.Children())
+	}
+	return n
+}
 
 type Notebook struct {
 	ID        string    `json:"id"`
@@ -107,6 +177,7 @@ type Notebook struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 	Version   int       `json:"version"`
+	UserID    string    `json:"-"`
 }
 
 type Snapshot struct {
@@ -234,25 +305,36 @@ type scanner interface{ Scan(...any) error }
 func scanNotebook(r scanner) (Notebook, error) {
 	var nb Notebook
 	var c, u string
-	err := r.Scan(&nb.ID, &nb.Title, &nb.Theme, &nb.Paper, &c, &u, &nb.Version, &nb.Mode)
+	var owner sql.NullString
+	err := r.Scan(&nb.ID, &nb.Title, &nb.Theme, &nb.Paper, &c, &u, &nb.Version, &nb.Mode, &owner)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nb, ErrNotFound
 	}
-	nb.CreatedAt, nb.UpdatedAt = parseTS(c), parseTS(u)
+	nb.CreatedAt, nb.UpdatedAt, nb.UserID = parseTS(c), parseTS(u), owner.String
 	return nb, err
 }
 
-const nbCols = `id, title, theme, paper, created_at, updated_at, version, mode`
+const nbCols = `id, title, theme, paper, created_at, updated_at, version, mode, user_id`
 
-func (s *Store) CreateNotebook(title, theme, paper, mode string) (Notebook, error) {
+func (s *Store) CreateNotebook(userID, title, theme, paper, mode string) (Notebook, error) {
 	now := time.Now()
-	nb := Notebook{ID: model.NewID("n_"), Title: title, Theme: theme, Paper: paper, Mode: mode, CreatedAt: now, UpdatedAt: now, Version: 1}
+	nb := Notebook{ID: model.NewID("n_"), Title: title, Theme: theme, Paper: paper, Mode: mode, CreatedAt: now, UpdatedAt: now, Version: 1, UserID: userID}
+	if userID == "" {
+		return nb, errors.New("internal error: notebook without an owner")
+	}
+	var count int
+	if err := s.db.QueryRow(s.q(`SELECT count(*) FROM notebooks WHERE user_id = ? AND deleted_at IS NULL`), userID).Scan(&count); err != nil {
+		return nb, err
+	}
+	if count >= MaxNotebooks {
+		return nb, fmt.Errorf("%w: you already have %d notebooks (the limit is %d); delete some first", ErrQuota, count, MaxNotebooks)
+	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return nb, err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(s.q(`INSERT INTO notebooks (`+nbCols+`) VALUES (?,?,?,?,?,?,?,?)`), nb.ID, title, theme, paper, ts(now), ts(now), 1, mode); err != nil {
+	if _, err := tx.Exec(s.q(`INSERT INTO notebooks (`+nbCols+`) VALUES (?,?,?,?,?,?,?,?,?)`), nb.ID, title, theme, paper, ts(now), ts(now), 1, mode, userID); err != nil {
 		return nb, err
 	}
 	if err := s.snapshot(tx, nb, nil, 1, "create_notebook", "created notebook"); err != nil {
@@ -261,12 +343,12 @@ func (s *Store) CreateNotebook(title, theme, paper, mode string) (Notebook, erro
 	return nb, tx.Commit()
 }
 
-func (s *Store) Notebook(id string) (Notebook, error) {
-	return scanNotebook(s.db.QueryRow(s.q(`SELECT `+nbCols+` FROM notebooks WHERE id = ? AND deleted_at IS NULL`), id))
+func (s *Store) Notebook(userID, id string) (Notebook, error) {
+	return scanNotebook(s.db.QueryRow(s.q(`SELECT `+nbCols+` FROM notebooks WHERE id = ? AND user_id = ? AND deleted_at IS NULL`), id, userID))
 }
 
-func (s *Store) Notebooks() ([]Notebook, error) {
-	rows, err := s.db.Query(`SELECT ` + nbCols + ` FROM notebooks WHERE deleted_at IS NULL ORDER BY updated_at DESC`)
+func (s *Store) Notebooks(userID string) ([]Notebook, error) {
+	rows, err := s.db.Query(s.q(`SELECT `+nbCols+` FROM notebooks WHERE user_id = ? AND deleted_at IS NULL ORDER BY updated_at DESC`), userID)
 	if err != nil {
 		return nil, err
 	}
@@ -282,8 +364,8 @@ func (s *Store) Notebooks() ([]Notebook, error) {
 	return nbs, rows.Err()
 }
 
-func (s *Store) Delete(id string) error {
-	res, err := s.db.Exec(s.q(`UPDATE notebooks SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL`), ts(time.Now()), id)
+func (s *Store) Delete(userID, id string) error {
+	res, err := s.db.Exec(s.q(`UPDATE notebooks SET deleted_at = ? WHERE id = ? AND user_id = ? AND deleted_at IS NULL`), ts(time.Now()), id, userID)
 	if err != nil {
 		return err
 	}
@@ -293,7 +375,10 @@ func (s *Store) Delete(id string) error {
 	return nil
 }
 
-func (s *Store) Blocks(id string) ([]model.Block, error) {
+func (s *Store) Blocks(userID, id string) ([]model.Block, error) {
+	if _, err := s.Notebook(userID, id); err != nil {
+		return nil, err
+	}
 	return s.blocks(s.db, id)
 }
 
@@ -322,11 +407,11 @@ func (s *Store) blocks(q querier, id string) ([]model.Block, error) {
 
 type MutateFunc func(nb *Notebook, blocks []model.Block) ([]model.Block, error)
 
-func (s *Store) Mutate(id string, expected *int, tool, summary string, fn MutateFunc) (Notebook, []model.Block, error) {
-	return s.mutate(id, expected, tool, summary, 0, fn)
+func (s *Store) Mutate(userID, id string, expected *int, tool, summary string, fn MutateFunc) (Notebook, []model.Block, error) {
+	return s.mutate(userID, id, expected, tool, summary, 0, fn)
 }
 
-func (s *Store) mutate(id string, expected *int, tool, summary string, base int, fn MutateFunc) (Notebook, []model.Block, error) {
+func (s *Store) mutate(userID, id string, expected *int, tool, summary string, base int, fn MutateFunc) (Notebook, []model.Block, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return Notebook{}, nil, err
@@ -336,7 +421,7 @@ func (s *Store) mutate(id string, expected *int, tool, summary string, base int,
 	if s.postgres {
 		lock = " FOR UPDATE"
 	}
-	nb, err := scanNotebook(tx.QueryRow(s.q(`SELECT `+nbCols+` FROM notebooks WHERE id = ? AND deleted_at IS NULL`+lock), id))
+	nb, err := scanNotebook(tx.QueryRow(s.q(`SELECT `+nbCols+` FROM notebooks WHERE id = ? AND user_id = ? AND deleted_at IS NULL`+lock), id, userID))
 	if err != nil {
 		return nb, nil, err
 	}
@@ -350,6 +435,9 @@ func (s *Store) mutate(id string, expected *int, tool, summary string, base int,
 	next, err := fn(&nb, slices.Clone(old))
 	if err != nil {
 		return nb, nil, err
+	}
+	if n := countBlocks(next); n > MaxBlocks {
+		return nb, nil, fmt.Errorf("%w: the notebook would have %d blocks (the limit is %d); split it into another notebook", ErrQuota, n, MaxBlocks)
 	}
 	now := time.Now()
 	if err := s.writeDiff(tx, id, old, next, now); err != nil {
@@ -426,7 +514,10 @@ func (s *Store) snapshot(tx *sql.Tx, nb Notebook, bs []model.Block, base int, to
 	return err
 }
 
-func (s *Store) Versions(id string, limit int) ([]Snapshot, error) {
+func (s *Store) Versions(userID, id string, limit int) ([]Snapshot, error) {
+	if _, err := s.Notebook(userID, id); err != nil {
+		return nil, err
+	}
 	rows, err := s.db.Query(s.q(`SELECT version, tool_name, summary, timestamp FROM snapshots WHERE notebook_id = ? ORDER BY version DESC LIMIT ?`), id, limit)
 	if err != nil {
 		return nil, err
@@ -445,11 +536,14 @@ func (s *Store) Versions(id string, limit int) ([]Snapshot, error) {
 	return out, rows.Err()
 }
 
-func (s *Store) Restore(id string, version int, expected *int) (Notebook, []model.Block, error) {
-	return s.restore(id, version, expected, "restore_version", false)
+func (s *Store) Restore(userID, id string, version int, expected *int) (Notebook, []model.Block, error) {
+	return s.restore(userID, id, version, expected, "restore_version", false)
 }
 
-func (s *Store) restore(id string, version int, expected *int, tool string, inheritBase bool) (Notebook, []model.Block, error) {
+func (s *Store) restore(userID, id string, version int, expected *int, tool string, inheritBase bool) (Notebook, []model.Block, error) {
+	if _, err := s.Notebook(userID, id); err != nil {
+		return Notebook{}, nil, err
+	}
 	var js, theme, paper, mode string
 	var base int
 	err := s.db.QueryRow(s.q(`SELECT blocks, theme, paper, mode, base FROM snapshots WHERE notebook_id = ? AND version = ?`), id, version).Scan(&js, &theme, &paper, &mode, &base)
@@ -468,15 +562,15 @@ func (s *Store) restore(id string, version int, expected *int, tool string, inhe
 	if !inheritBase {
 		base = 0
 	}
-	return s.mutate(id, expected, tool, fmt.Sprintf("restored version %d", version), base, func(nb *Notebook, _ []model.Block) ([]model.Block, error) {
+	return s.mutate(userID, id, expected, tool, fmt.Sprintf("restored version %d", version), base, func(nb *Notebook, _ []model.Block) ([]model.Block, error) {
 		nb.Theme, nb.Paper, nb.Mode = theme, paper, mode
 		return restored, nil
 	})
 }
 
-func (s *Store) Undo(id string, expected *int) (Notebook, []model.Block, error) {
+func (s *Store) Undo(userID, id string, expected *int) (Notebook, []model.Block, error) {
 	var base int
-	err := s.db.QueryRow(s.q(`SELECT s.base FROM snapshots s JOIN notebooks n ON n.id = s.notebook_id AND n.version = s.version WHERE n.id = ?`), id).Scan(&base)
+	err := s.db.QueryRow(s.q(`SELECT s.base FROM snapshots s JOIN notebooks n ON n.id = s.notebook_id AND n.version = s.version WHERE n.id = ? AND n.user_id = ? AND n.deleted_at IS NULL`), id, userID).Scan(&base)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Notebook{}, nil, ErrNotFound
 	}
@@ -486,5 +580,5 @@ func (s *Store) Undo(id string, expected *int) (Notebook, []model.Block, error) 
 	if base <= 1 {
 		return Notebook{}, nil, errors.New("nothing to undo: the notebook is at its original state")
 	}
-	return s.restore(id, base-1, expected, "undo", true)
+	return s.restore(userID, id, base-1, expected, "undo", true)
 }

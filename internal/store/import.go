@@ -27,7 +27,7 @@ type ImportResult struct {
 	Status string
 }
 
-func (s *Store) ImportFrom(src *Store, includeDeleted, dryRun bool) ([]ImportResult, error) {
+func (s *Store) ImportFrom(src *Store, ownerID string, includeDeleted, dryRun bool) ([]ImportResult, error) {
 	rows, err := src.db.Query(`SELECT id, title, theme, paper, mode, created_at, updated_at, version, deleted_at FROM notebooks ORDER BY created_at`)
 	if err != nil {
 		return nil, err
@@ -57,7 +57,7 @@ func (s *Store) ImportFrom(src *Store, includeDeleted, dryRun bool) ([]ImportRes
 		case dryRun:
 			r.Status = "would import"
 		default:
-			if err := s.importOne(src, n); err != nil {
+			if err := s.importOne(src, n, ownerID); err != nil {
 				r.Status = "failed: " + err.Error()
 			} else {
 				r.Status = "imported"
@@ -68,7 +68,7 @@ func (s *Store) ImportFrom(src *Store, includeDeleted, dryRun bool) ([]ImportRes
 	return out, nil
 }
 
-func (s *Store) importOne(src *Store, n rawNotebook) error {
+func (s *Store) importOne(src *Store, n rawNotebook, ownerID string) error {
 	var blocks []rawBlock
 	rows, err := src.db.Query(`SELECT id, position, type, data, created_at, updated_at FROM blocks WHERE notebook_id = ?`, n.ID)
 	if err != nil {
@@ -106,8 +106,9 @@ func (s *Store) importOne(src *Store, n rawNotebook) error {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(s.q(`INSERT INTO notebooks (id, title, theme, paper, mode, created_at, updated_at, version, deleted_at) VALUES (?,?,?,?,?,?,?,?,?)`),
-		n.ID, n.Title, n.Theme, n.Paper, n.Mode, n.CreatedAt, n.UpdatedAt, n.Version, n.DeletedAt); err != nil {
+	owner := sql.NullString{String: ownerID, Valid: ownerID != ""}
+	if _, err := tx.Exec(s.q(`INSERT INTO notebooks (id, title, theme, paper, mode, created_at, updated_at, version, deleted_at, user_id) VALUES (?,?,?,?,?,?,?,?,?,?)`),
+		n.ID, n.Title, n.Theme, n.Paper, n.Mode, n.CreatedAt, n.UpdatedAt, n.Version, n.DeletedAt, owner); err != nil {
 		return err
 	}
 	for _, b := range blocks {
