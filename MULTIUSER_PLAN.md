@@ -1,7 +1,7 @@
 # Folio — Multi-user plan (product phase)
 
-> **Status: PLAN for discussion. No code changes yet.**
-> This file went through two passes: draft 1 (Sections 1–9), then a review that changed it (Section 10, "Iteration 2"). Section 11 lists the decisions we need to make together before building. Once we agree, it becomes the build spec, with the same working rules as `docs/SPEC.md` Section 0.
+> **Status: APPROVED 2026-10-22. Executing tasks U0–U11 (Section 10b table).**
+> This file went through three passes: draft 1 (Sections 1–9), a review that changed it (Section 10, "Iteration 2"), and a recheck against the actual code (Section 10b, "Iteration 3"; its task table replaces Section 12). Section 11 lists the decisions we need to make together before building. Once we agree, it becomes the build spec, with the same working rules as `docs/SPEC.md` Section 0.
 
 ---
 
@@ -213,7 +213,56 @@ I re-read draft 1 looking for things that would break, leak, or annoy users. Fin
 
 ---
 
-## 11. Decisions to discuss before building
+## 10b. Iteration 3 — recheck against the actual code (2026-10-22)
+
+Checked the plan against the code as it is now (store API, viewer, MCP handler, SDK `auth` package). Findings, and what changes:
+
+1. **The SDK rejects tokens without an expiry.** `auth.RequireBearerToken` refuses any `TokenInfo` whose `Expiration` is zero unless `RequireBearerTokenOptions.AllowMissingExpiration` is set. **Change:** the verifier sets `Expiration` from `api_tokens.expires_at`. For tokens that never expire, we set `AllowMissingExpiration: true`. A test covers both cases.
+2. **Page images are served as `Cache-Control: public, max-age=31536000, immutable`** (`viewer.go`). Fine for a single user, wrong for private data, because shared caches could keep one user's pages. **Change:** use `private, max-age=…` for pages, PNGs and PDFs, and `no-store` for `/connect` (where tokens are shown) and the login/signup pages.
+3. **The viewer index (`/`) lists every notebook** (`s.st.Notebooks()`). **Change:** it becomes the logged-in user's dashboard (already planned; now confirmed as a concrete call site).
+4. **The original spec's `rename_notebook` and `delete_notebook` tools were never built**, so users have no way to delete or rename. **Change:** new task U5b adds both (user-scoped; delete stays a soft delete, needs `confirm: true`, and can be undone by an admin).
+5. **Scope of the store refactor:** 16 call sites in 5 files (`mcpserver/server.go`, `edit.go`, `tools.go`, `viewer/viewer.go`, `cmd/folio/main.go`). Small enough to switch the whole store API to user-scoped in one task (U2), with no compatibility layer.
+6. **SQLite can't add `NOT NULL` to an existing column** (no `ALTER COLUMN`). **Change:** the `NOT NULL` step (rollout deploy 2) is **Postgres-only**. In SQLite (tests/local), ownership is enforced by the store API, and the migration inserts the implicit local user row `u_local` (the foreign key needs it) and assigns existing local notebooks to it.
+7. **`folio import` doesn't assign an owner.** **Change:** add `--owner <email>`. Without it, imported notebooks stay orphans until `folio admin adopt`.
+8. **The database password was shared in chat** and is still unchanged. With user accounts in that database, this matters even more. **Change:** rotating it, and restricting the external access list to your IP, becomes part of **U0** (before any user data exists).
+9. **How Claude Code reacts to 401:** when the server answers 401, Claude Code may start an OAuth sign-in flow, which we don't offer yet. With a correct `--header` that never happens, but a mistyped or revoked token could show a confusing "needs authentication" message. **Change:** the 401 response body says plainly "invalid or revoked Folio token: create a new one at /connect". We don't advertise OAuth metadata until the OAuth phase. Docs and the `/connect` page explain it.
+10. **`mcp-remote`** (the desktop app bridge) needs Node.js on the user's machine. **Change:** `/connect` shows the desktop snippet with that requirement stated. Claude Code needs nothing extra.
+11. **Turning auth on breaks the current claude.ai connector** (web, phone, voice) until OAuth ships, because the app can't send the token. **Change:** listed explicitly in decision 1 below, so it's an informed choice.
+12. **Stateless MCP + bearer auth:** confirmed compatible. Each POST carries the header, and the SDK passes `TokenInfo` per request. In stateless mode the SDK answers GET with 405, which Claude Code handles (it falls back to POST-only).
+
+Updated task list (replaces Section 12):
+
+| ID | Task | Depends on |
+|---|---|---|
+| U0 | Rotate the DB password + restrict external DB access; stateless MCP; `/healthz` shows commit | — |
+| U1 | Schema: users, web_sessions, api_tokens, `notebooks.user_id` (+ `u_local` in SQLite) | U0 |
+| U2 | User-scoped store API (all 16 call sites), admin handle, local implicit user | U1 |
+| U3 | Web auth pages (signup/login/logout), sessions, CSRF, security + cache headers | U2 |
+| U4 | `/connect`: create/list/revoke tokens, copy-paste commands, `no-store` | U3 |
+| U5 | `/mcp` bearer auth (expiry handling, clear 401), tools use `TokenInfo.UserID` | U2, U4 |
+| U5b | `rename_notebook`, `delete_notebook` tools (user-scoped) | U2 |
+| U6 | Viewer behind session, `/login?next=` redirect, private caching | U3 |
+| U7 | Rate limits, quotas, signup mode, log redaction, argon2 concurrency limit | U3–U5 |
+| U8 | Isolation test matrix (every tool + route), hijack test, migration tests, both backends | U5, U5b, U6 |
+| U9 | Admin CLI: `adopt`, `reset-password`, `disable-user`; `import --owner` | U2 |
+| U10 | Rollout: deploy 1 → sign up → adopt → deploy 2 (NOT NULL, Postgres) → reconnect Claude → public needs auth | all |
+| U11 | Docs: README "Accounts & connecting Claude", DECISIONS, PROGRESS | all |
+
+## 11. Decisions (resolved 2026-10-22)
+
+**Resolved by the user:**
+1. **Claude app:** tokens now (Claude Code, desktop via `mcp-remote`). **OAuth in the next phase.** The claude.ai connector stops working once auth is on, until OAuth ships.
+2. **Signup:** **open** (`FOLIO_SIGNUP=open`). Rate limits and quotas (U7) are the abuse protection.
+3. **Defaults accepted:**
+   - Tokens never expire (manual revoke; `AllowMissingExpiration`).
+   - Quotas: 100 notebooks and 2,000 blocks per notebook.
+   - No email this phase (password reset by admin CLI).
+   - Stay on the Free plan.
+   - Pages match the viewer's dark/light style.
+
+The original questions are kept below for reference.
+
+### Original questions
 
 1. **Claude app (web/phone/voice) timing:**
    - (a) Claude Code + desktop via `mcp-remote` now, OAuth next phase **(recommended)**,
