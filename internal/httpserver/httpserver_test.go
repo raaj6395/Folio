@@ -165,3 +165,46 @@ func TestPublicModeAcceptsForeignHost(t *testing.T) {
 		}
 	}
 }
+
+func TestClientSurvivesServerRestart(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "folio.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	home := t.TempDir()
+	lb, _ := layout.New(home)
+	srv := httptest.NewServer(nil)
+	defer srv.Close()
+	srv.Config.Handler = Handler(st, lb, home, srv.URL, false)
+
+	ctx := context.Background()
+	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "0"}, nil).Connect(ctx, &mcp.StreamableClientTransport{Endpoint: srv.URL + "/mcp"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cs.Close()
+	if _, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "list_notebooks", Arguments: map[string]any{}}); err != nil {
+		t.Fatal(err)
+	}
+	srv.Config.Handler = Handler(st, lb, home, srv.URL, false)
+	res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "list_notebooks", Arguments: map[string]any{}})
+	if err != nil {
+		t.Fatalf("call after server restart: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("call after server restart returned error: %+v", res.Content)
+	}
+}
+
+func TestHealthzShowsCommit(t *testing.T) {
+	st, _ := store.Open(filepath.Join(t.TempDir(), "folio.db"))
+	defer st.Close()
+	lb, _ := layout.New(t.TempDir())
+	t.Setenv("RENDER_GIT_COMMIT", "f9616d8c0ffee")
+	srv := httptest.NewServer(Handler(st, lb, t.TempDir(), "", false))
+	defer srv.Close()
+	if body := get(t, srv.URL+"/healthz"); body != "folio ok (sqlite) commit f9616d8" {
+		t.Fatalf("healthz: %q", body)
+	}
+}

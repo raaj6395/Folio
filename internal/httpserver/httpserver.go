@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -16,7 +17,7 @@ import (
 func Handler(st *store.Store, lb *layout.Builder, home, publicURL string, public bool) http.Handler {
 	srv := mcpserver.New(st, lb, home, publicURL)
 	mux := http.NewServeMux()
-	opts := &mcp.StreamableHTTPOptions{DisableLocalhostProtection: public}
+	opts := &mcp.StreamableHTTPOptions{Stateless: true, DisableLocalhostProtection: public}
 	mux.Handle("/mcp", mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return srv }, opts))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		if err := st.Ping(); err != nil {
@@ -24,6 +25,9 @@ func Handler(st *store.Store, lb *layout.Builder, home, publicURL string, public
 			return
 		}
 		fmt.Fprintf(w, "folio ok (%s)", st.Backend())
+		if c := os.Getenv("RENDER_GIT_COMMIT"); len(c) >= 7 {
+			fmt.Fprintf(w, " commit %s", c[:7])
+		}
 	})
 	mux.Handle("/", viewer.New(st, lb))
 	return mux

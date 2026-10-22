@@ -169,3 +169,9 @@
 - **Why:** On Render every `/mcp` request returned 403. Reproduced locally: the same request succeeds with `Host: localhost` and gets 403 with `Host: folio-1i2o.onrender.com`. The go-sdk rejects requests that arrive on a localhost connection with a non-localhost Host header. Render's proxy delivers public traffic that way. The protection only guards local-only servers against DNS rebinding, which doesn't apply to a deliberately public service.
 - **Alternatives considered:** rewriting the Host header in middleware (it hides the real host from the SDK for no benefit).
 - **Affects interface/behaviour?** no — **User approved?** n.a.
+
+## 2026-10-22 — U0: stateless MCP, commit in /healthz
+- **Decision:** `/mcp` uses `StreamableHTTPOptions{Stateless: true}`. `/healthz` appends `commit <7 chars>` from Render's `RENDER_GIT_COMMIT`.
+- **Why:** Reproduced in `TestClientSurvivesServerRestart`: with stateful sessions, after a server restart the client fails with `session not found` (what Claude hit after every Render redeploy or free-tier sleep). Stateless mode fixes it, and makes each request independently authenticated, which multi-user needs. Folio never sends server→client requests, so nothing is lost.
+- **Alternatives considered:** a persistent session store (EventStore); not needed.
+- **Affects interface/behaviour?** no — **User approved?** n.a. (part of the approved multi-user plan, U0)
