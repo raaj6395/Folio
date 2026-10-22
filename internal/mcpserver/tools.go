@@ -38,7 +38,7 @@ type NotebookInfo struct {
 }
 
 func (s *Server) info(ctx context.Context, nb store.Notebook) (NotebookInfo, error) {
-	bs, err := s.st.Blocks(nb.ID)
+	bs, err := s.st.Blocks(nb.UserID, nb.ID)
 	if err != nil {
 		return NotebookInfo{}, err
 	}
@@ -126,15 +126,26 @@ type ViewerOut struct {
 	Hint    string `json:"hint,omitempty"`
 }
 
+type renameIn struct {
+	NotebookID      string `json:"notebook_id" jsonschema:"ID of the notebook"`
+	Title           string `json:"title" jsonschema:"New title"`
+	ExpectedVersion *int   `json:"expected_version,omitempty" jsonschema:"Reject unless the notebook is at this version"`
+}
+
+type deleteNotebookIn struct {
+	NotebookID string `json:"notebook_id" jsonschema:"ID of the notebook to delete"`
+	Confirm    bool   `json:"confirm,omitempty" jsonschema:"Must be true; confirms the user asked for the deletion"`
+}
+
 type ExportOut struct {
-	Path string `json:"path"`
+	Path string `json:"path,omitempty"`
 	URL  string `json:"url,omitempty"`
 }
 
 func (s *Server) register(m *mcp.Server) {
-	addTool(m, "list_notebooks", "List all notebooks, most recently updated first.",
+	addTool(s, m, "list_notebooks", "List all notebooks, most recently updated first.",
 		func(ctx context.Context, _ *mcp.CallToolRequest, _ empty) (*mcp.CallToolResult, map[string][]NotebookInfo, error) {
-			nbs, err := s.st.Notebooks()
+			nbs, err := s.st.Notebooks(userOf(ctx))
 			if err != nil {
 				return nil, nil, err
 			}
@@ -149,7 +160,7 @@ func (s *Server) register(m *mcp.Server) {
 			return nil, map[string][]NotebookInfo{"notebooks": out}, nil
 		})
 
-	addTool(m, "create_notebook", "Create a new empty notebook. Returns its ID.",
+	addTool(s, m, "create_notebook", "Create a new empty notebook. Returns its ID.",
 		func(ctx context.Context, _ *mcp.CallToolRequest, in createIn) (*mcp.CallToolResult, NotebookInfo, error) {
 			if strings.TrimSpace(in.Title) == "" {
 				return nil, NotebookInfo{}, fmt.Errorf("title must not be empty")
@@ -172,7 +183,7 @@ func (s *Server) register(m *mcp.Server) {
 			if err := validMode(in.Mode); err != nil {
 				return nil, NotebookInfo{}, err
 			}
-			nb, err := s.st.CreateNotebook(in.Title, in.Theme, in.Paper, in.Mode)
+			nb, err := s.st.CreateNotebook(userOf(ctx), in.Title, in.Theme, in.Paper, in.Mode)
 			if err != nil {
 				return nil, NotebookInfo{}, err
 			}
@@ -180,7 +191,7 @@ func (s *Server) register(m *mcp.Server) {
 			return nil, info, err
 		})
 
-	addTool(m, "append_blocks", "Add blocks at the end of a notebook. All blocks are validated first; if any is invalid nothing is written. Returns the new block IDs in order, where they landed, and layout warnings.",
+	addTool(s, m, "append_blocks", "Add blocks at the end of a notebook. All blocks are validated first; if any is invalid nothing is written. Returns the new block IDs in order, where they landed, and layout warnings.",
 		func(ctx context.Context, _ *mcp.CallToolRequest, in appendIn) (*mcp.CallToolResult, MutationResult, error) {
 			add, err := parseBlocks(ctx, in.Blocks)
 			if err != nil {
@@ -194,9 +205,9 @@ func (s *Server) register(m *mcp.Server) {
 			return nil, res, err
 		})
 
-	addTool(m, "get_outline", "Compact view of a notebook: every block's ID, type, page and a short summary. The main way to read current state.",
+	addTool(s, m, "get_outline", "Compact view of a notebook: every block's ID, type, page and a short summary. The main way to read current state.",
 		func(ctx context.Context, _ *mcp.CallToolRequest, in notebookIn) (*mcp.CallToolResult, Outline, error) {
-			nb, bs, err := s.load(in.NotebookID)
+			nb, bs, err := s.load(ctx, in.NotebookID)
 			if err != nil {
 				return nil, Outline{}, err
 			}
@@ -214,9 +225,9 @@ func (s *Server) register(m *mcp.Server) {
 			return nil, out, nil
 		})
 
-	addTool(m, "get_layout_info", "Where every block landed (page, y position and end position in mm from the page top), how full each page is, and layout warnings. Cheaper than rendering images.",
+	addTool(s, m, "get_layout_info", "Where every block landed (page, y position and end position in mm from the page top), how full each page is, and layout warnings. Cheaper than rendering images.",
 		func(ctx context.Context, _ *mcp.CallToolRequest, in notebookIn) (*mcp.CallToolResult, LayoutInfo, error) {
-			nb, bs, err := s.load(in.NotebookID)
+			nb, bs, err := s.load(ctx, in.NotebookID)
 			if err != nil {
 				return nil, LayoutInfo{}, err
 			}
@@ -227,8 +238,11 @@ func (s *Server) register(m *mcp.Server) {
 			return nil, LayoutInfo{Version: nb.Version, PageCount: r.PageCount, PageFill: r.PageFill, Blocks: r.Blocks, Warnings: r.Warnings}, nil
 		})
 
-	addTool(m, "render_pages", "Render pages to PNG images so you can see how they look. Use after writing to check layout; fix what looks wrong.",
+	addTool(s, m, "render_pages", "Render pages to PNG images so you can see how they look. Use after writing to check layout; fix what looks wrong.",
 		func(ctx context.Context, _ *mcp.CallToolRequest, in renderIn) (*mcp.CallToolResult, any, error) {
+			if err := s.allowRender(ctx); err != nil {
+				return nil, nil, err
+			}
 			if len(in.Pages) == 0 || len(in.Pages) > 4 {
 				return nil, nil, fmt.Errorf("pages must list 1 to 4 page numbers, got %d", len(in.Pages))
 			}
@@ -238,7 +252,7 @@ func (s *Server) register(m *mcp.Server) {
 			if in.PPI < 30 || in.PPI > 150 {
 				return nil, nil, fmt.Errorf("ppi must be between 30 and 150, got %d", in.PPI)
 			}
-			nb, bs, err := s.load(in.NotebookID)
+			nb, bs, err := s.load(ctx, in.NotebookID)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -253,8 +267,11 @@ func (s *Server) register(m *mcp.Server) {
 			return res, nil, nil
 		})
 
-	addTool(m, "preview_diagram", "Render D2 source to an image without changing any notebook. Use it to check a diagram before inserting it. Returns the D2 error (with line number) if it does not compile.",
+	addTool(s, m, "preview_diagram", "Render D2 source to an image without changing any notebook. Use it to check a diagram before inserting it. Returns the D2 error (with line number) if it does not compile.",
 		func(ctx context.Context, _ *mcp.CallToolRequest, in previewIn) (*mcp.CallToolResult, any, error) {
+			if err := s.allowRender(ctx); err != nil {
+				return nil, nil, err
+			}
 			if in.Theme == "" {
 				in.Theme = "clean"
 			}
@@ -285,26 +302,66 @@ func (s *Server) register(m *mcp.Server) {
 			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: note}, &mcp.ImageContent{Data: png, MIMEType: "image/png"}}}, nil, nil
 		})
 
-	addTool(m, "export_pdf", "Export a notebook as a PDF file. Returns the absolute path.",
+	addTool(s, m, "export_pdf", "Export a notebook as a PDF. Over HTTP it returns a download URL; locally it writes a file and returns its path.",
 		func(ctx context.Context, _ *mcp.CallToolRequest, in exportIn) (*mcp.CallToolResult, ExportOut, error) {
-			nb, bs, err := s.load(in.NotebookID)
+			if err := s.allowRender(ctx); err != nil {
+				return nil, ExportOut{}, err
+			}
+			nb, bs, err := s.load(ctx, in.NotebookID)
 			if err != nil {
 				return nil, ExportOut{}, err
 			}
-			path, err := s.Export(ctx, nb, bs, in.Path)
-			out := ExportOut{Path: path}
 			if s.publicURL != "" {
-				out.URL = s.publicURL + "/n/" + nb.ID + "/pdf"
+				if _, err := s.lb.Build(ctx, nb, bs); err != nil {
+					return nil, ExportOut{}, err
+				}
+				return nil, ExportOut{URL: s.publicURL + "/n/" + nb.ID + "/pdf"}, nil
 			}
-			return nil, out, err
+			path, err := s.Export(ctx, nb, bs, in.Path)
+			return nil, ExportOut{Path: path}, err
 		})
 
-	addTool(m, "list_themes", "List available themes and paper backgrounds.",
+	addTool(s, m, "rename_notebook", "Change a notebook's title.",
+		func(ctx context.Context, _ *mcp.CallToolRequest, in renameIn) (*mcp.CallToolResult, NotebookInfo, error) {
+			title := strings.TrimSpace(in.Title)
+			if title == "" || len(title) > 200 {
+				return nil, NotebookInfo{}, fmt.Errorf("title must be 1-200 characters")
+			}
+			var nb store.Notebook
+			_, err := s.mutate(ctx, in.NotebookID, in.ExpectedVersion, "rename_notebook", "renamed to "+title,
+				func(n *store.Notebook, bs []model.Block) ([]model.Block, []string, error) {
+					n.Title = title
+					nb = *n
+					return bs, nil, nil
+				})
+			if err != nil {
+				return nil, NotebookInfo{}, err
+			}
+			nb, err = s.st.Notebook(userOf(ctx), in.NotebookID)
+			if err != nil {
+				return nil, NotebookInfo{}, err
+			}
+			info, err := s.info(ctx, nb)
+			return nil, info, err
+		})
+
+	addTool(s, m, "delete_notebook", "Delete a notebook. Requires confirm: true. Only do this when the user clearly asked to delete it.",
+		func(ctx context.Context, _ *mcp.CallToolRequest, in deleteNotebookIn) (*mcp.CallToolResult, map[string]string, error) {
+			if !in.Confirm {
+				return nil, nil, fmt.Errorf("set confirm: true to delete notebook %s; ask the user first", in.NotebookID)
+			}
+			if err := s.st.Delete(userOf(ctx), in.NotebookID); err != nil {
+				return nil, nil, err
+			}
+			return nil, map[string]string{"deleted": in.NotebookID}, nil
+		})
+
+	addTool(s, m, "list_themes", "List available themes and paper backgrounds.",
 		func(ctx context.Context, _ *mcp.CallToolRequest, _ empty) (*mcp.CallToolResult, ThemesOut, error) {
 			return nil, ThemesOut{Themes: layout.Themes, Papers: papers, Modes: layout.Modes}, nil
 		})
 
-	addTool(m, "set_theme", "Change a notebook's theme, paper and/or mode (dark or light). If paper is omitted, the theme's default paper is used; if mode is omitted it stays as it is. To only switch dark/light, pass the current theme and the new mode.",
+	addTool(s, m, "set_theme", "Change a notebook's theme, paper and/or mode (dark or light). If paper is omitted, the theme's default paper is used; if mode is omitted it stays as it is. To only switch dark/light, pass the current theme and the new mode.",
 		func(ctx context.Context, _ *mcp.CallToolRequest, in setThemeIn) (*mcp.CallToolResult, MutationResult, error) {
 			if err := validTheme(in.Theme); err != nil {
 				return nil, MutationResult{}, err
@@ -331,9 +388,9 @@ func (s *Server) register(m *mcp.Server) {
 			return nil, res, err
 		})
 
-	addTool(m, "get_viewer_url", "URL of the live web viewer for a notebook, where the user can watch pages update as you write. Also says whether the viewer is running (start it with `folio serve`).",
+	addTool(s, m, "get_viewer_url", "URL of the live web viewer for a notebook, where the user can watch pages update as you write. Also says whether the viewer is running (start it with `folio serve`).",
 		func(ctx context.Context, _ *mcp.CallToolRequest, in notebookIn) (*mcp.CallToolResult, ViewerOut, error) {
-			if _, err := s.st.Notebook(in.NotebookID); err != nil {
+			if _, err := s.st.Notebook(userOf(ctx), in.NotebookID); err != nil {
 				return nil, ViewerOut{}, err
 			}
 			if s.publicURL != "" {
@@ -346,7 +403,7 @@ func (s *Server) register(m *mcp.Server) {
 			return nil, out, nil
 		})
 
-	addTool(m, "get_authoring_guide", "How to write good Folio notes: every block type with an example, and style guidance. Read it once before writing.",
+	addTool(s, m, "get_authoring_guide", "How to write good Folio notes: every block type with an example, and style guidance. Read it once before writing.",
 		func(ctx context.Context, _ *mcp.CallToolRequest, _ empty) (*mcp.CallToolResult, any, error) {
 			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: guide}}}, nil, nil
 		})
@@ -385,12 +442,12 @@ func parseBlocks(ctx context.Context, raws []json.RawMessage) ([]model.Block, er
 	return bs, nil
 }
 
-func (s *Server) load(id string) (store.Notebook, []model.Block, error) {
-	nb, err := s.st.Notebook(id)
+func (s *Server) load(ctx context.Context, id string) (store.Notebook, []model.Block, error) {
+	nb, err := s.st.Notebook(userOf(ctx), id)
 	if err != nil {
 		return nb, nil, err
 	}
-	bs, err := s.st.Blocks(id)
+	bs, err := s.st.Blocks(nb.UserID, id)
 	return nb, bs, err
 }
 
@@ -423,7 +480,11 @@ func (s *Server) Export(ctx context.Context, nb store.Notebook, bs []model.Block
 
 func ExportByID(ctx context.Context, st *store.Store, lb *layout.Builder, home, id, path string) (string, error) {
 	s := &Server{st: st, lb: lb, home: home}
-	nb, bs, err := s.load(id)
+	nb, err := st.NotebookAdmin(id)
+	if err != nil {
+		return "", friendly(err)
+	}
+	bs, err := st.Blocks(nb.UserID, id)
 	if err != nil {
 		return "", friendly(err)
 	}

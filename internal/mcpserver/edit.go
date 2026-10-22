@@ -110,7 +110,7 @@ func missing(bs []model.Block, ids []string) error {
 }
 
 func (s *Server) registerEdit(m *mcp.Server) {
-	addTool(m, "insert_blocks", "Insert blocks after a given block (or at the start). Validated as a whole; nothing is written if any block is invalid.",
+	addTool(s, m, "insert_blocks", "Insert blocks after a given block (or at the start). Validated as a whole; nothing is written if any block is invalid.",
 		func(ctx context.Context, _ *mcp.CallToolRequest, in insertIn) (*mcp.CallToolResult, MutationResult, error) {
 			add, err := parseBlocks(ctx, in.Blocks)
 			if err != nil {
@@ -128,7 +128,7 @@ func (s *Server) registerEdit(m *mcp.Server) {
 			return nil, res, err
 		})
 
-	addTool(m, "update_block", "Replace one block's content. Send the complete new block; the ID and position stay the same.",
+	addTool(s, m, "update_block", "Replace one block's content. Send the complete new block; the ID and position stay the same.",
 		func(ctx context.Context, _ *mcp.CallToolRequest, in updateIn) (*mcp.CallToolResult, MutationResult, error) {
 			upd, err := model.Parse(in.Block)
 			if err != nil {
@@ -172,7 +172,7 @@ func (s *Server) registerEdit(m *mcp.Server) {
 			return nil, res, err
 		})
 
-	addTool(m, "delete_blocks", "Delete blocks by ID.",
+	addTool(s, m, "delete_blocks", "Delete blocks by ID.",
 		func(ctx context.Context, _ *mcp.CallToolRequest, in deleteIn) (*mcp.CallToolResult, MutationResult, error) {
 			if len(in.BlockIDs) == 0 {
 				return nil, MutationResult{}, fmt.Errorf("block_ids must not be empty")
@@ -205,7 +205,7 @@ func (s *Server) registerEdit(m *mcp.Server) {
 			return nil, res, err
 		})
 
-	addTool(m, "move_blocks", "Move blocks to just after another block (or to the start). Moved blocks keep their relative order.",
+	addTool(s, m, "move_blocks", "Move blocks to just after another block (or to the start). Moved blocks keep their relative order.",
 		func(ctx context.Context, _ *mcp.CallToolRequest, in moveIn) (*mcp.CallToolResult, MutationResult, error) {
 			if len(in.BlockIDs) == 0 {
 				return nil, MutationResult{}, fmt.Errorf("block_ids must not be empty")
@@ -240,7 +240,7 @@ func (s *Server) registerEdit(m *mcp.Server) {
 			return nil, res, err
 		})
 
-	addTool(m, "read_blocks", "Read full block content (to edit it). Select by block_ids, by from_block_id + count, or by page.",
+	addTool(s, m, "read_blocks", "Read full block content (to edit it). Select by block_ids, by from_block_id + count, or by page.",
 		func(ctx context.Context, _ *mcp.CallToolRequest, in readIn) (*mcp.CallToolResult, map[string][]ReadBlock, error) {
 			n := 0
 			for _, set := range []bool{len(in.BlockIDs) > 0, in.FromBlockID != "", in.Page > 0} {
@@ -251,7 +251,7 @@ func (s *Server) registerEdit(m *mcp.Server) {
 			if n != 1 {
 				return nil, nil, fmt.Errorf("use exactly one of block_ids, from_block_id or page")
 			}
-			nb, bs, err := s.load(in.NotebookID)
+			nb, bs, err := s.load(ctx, in.NotebookID)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -298,30 +298,30 @@ func (s *Server) registerEdit(m *mcp.Server) {
 			return nil, map[string][]ReadBlock{"blocks": out}, nil
 		})
 
-	addTool(m, "list_versions", "List recent versions (snapshots) of a notebook, newest first.",
+	addTool(s, m, "list_versions", "List recent versions (snapshots) of a notebook, newest first.",
 		func(ctx context.Context, _ *mcp.CallToolRequest, in versionsIn) (*mcp.CallToolResult, map[string][]store.Snapshot, error) {
-			if _, err := s.st.Notebook(in.NotebookID); err != nil {
+			if _, err := s.st.Notebook(userOf(ctx), in.NotebookID); err != nil {
 				return nil, nil, err
 			}
 			if in.Limit <= 0 {
 				in.Limit = 20
 			}
-			vs, err := s.st.Versions(in.NotebookID, in.Limit)
+			vs, err := s.st.Versions(userOf(ctx), in.NotebookID, in.Limit)
 			return nil, map[string][]store.Snapshot{"versions": vs}, err
 		})
 
-	addTool(m, "undo", "Undo the most recent change. Call again to step further back.",
+	addTool(s, m, "undo", "Undo the most recent change. Call again to step further back.",
 		func(ctx context.Context, _ *mcp.CallToolRequest, in undoIn) (*mcp.CallToolResult, MutationResult, error) {
-			nb, bs, err := s.st.Undo(in.NotebookID, in.ExpectedVersion)
+			nb, bs, err := s.st.Undo(userOf(ctx), in.NotebookID, in.ExpectedVersion)
 			if err != nil {
 				return nil, MutationResult{}, err
 			}
 			return nil, s.result(ctx, nb, bs, nil), nil
 		})
 
-	addTool(m, "restore_version", "Restore the notebook to an earlier version from list_versions. This is itself a new version, so it can be undone.",
+	addTool(s, m, "restore_version", "Restore the notebook to an earlier version from list_versions. This is itself a new version, so it can be undone.",
 		func(ctx context.Context, _ *mcp.CallToolRequest, in restoreIn) (*mcp.CallToolResult, MutationResult, error) {
-			nb, bs, err := s.st.Restore(in.NotebookID, in.Version, in.ExpectedVersion)
+			nb, bs, err := s.st.Restore(userOf(ctx), in.NotebookID, in.Version, in.ExpectedVersion)
 			if err != nil {
 				return nil, MutationResult{}, err
 			}

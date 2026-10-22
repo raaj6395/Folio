@@ -10,10 +10,12 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/raaj6395/folio/internal/account"
 	"github.com/raaj6395/folio/internal/layout"
 	"github.com/raaj6395/folio/internal/model"
 	"github.com/raaj6395/folio/internal/store"
@@ -39,6 +41,15 @@ type Server struct {
 	lb        *layout.Builder
 	home      string
 	publicURL string
+	localUser string
+	renders   *account.Limiter
+}
+
+func (s *Server) allowRender(ctx context.Context) error {
+	if !s.renders.Allow(userOf(ctx)) {
+		return errors.New("rendering limit reached (30 renders/exports per minute); wait a minute and try again")
+	}
+	return nil
 }
 
 const blockDescription = `One block. Set "type" plus that type's fields:
@@ -86,12 +97,35 @@ func schemaFor[T any]() *jsonschema.Schema {
 	return s
 }
 
-func addTool[In, Out any](s *mcp.Server, name, desc string, h mcp.ToolHandlerFor[In, Out]) {
+type userKey struct{}
+
+func userOf(ctx context.Context) string {
+	uid, _ := ctx.Value(userKey{}).(string)
+	return uid
+}
+
+func (s *Server) userID(req *mcp.CallToolRequest) (string, error) {
+	if req != nil && req.Extra != nil && req.Extra.TokenInfo != nil && req.Extra.TokenInfo.UserID != "" {
+		return req.Extra.TokenInfo.UserID, nil
+	}
+	if s.localUser != "" {
+		return s.localUser, nil
+	}
+	return "", errors.New("authentication required: connect with a Folio token (create one on the Connect page)")
+}
+
+func addTool[In, Out any](srv *Server, s *mcp.Server, name, desc string, h mcp.ToolHandlerFor[In, Out]) {
 	tool := &mcp.Tool{Name: name, Description: desc, InputSchema: schemaFor[In]()}
 	if reflect.TypeFor[Out]() != reflect.TypeFor[any]() {
 		tool.OutputSchema = schemaFor[Out]()
 	}
 	mcp.AddTool(s, tool, func(ctx context.Context, req *mcp.CallToolRequest, in In) (*mcp.CallToolResult, Out, error) {
+		uid, err := srv.userID(req)
+		if err != nil {
+			var zero Out
+			return nil, zero, err
+		}
+		ctx = context.WithValue(ctx, userKey{}, uid)
 		res, out, err := h(ctx, req, in)
 		if err != nil {
 			slog.Warn("tool error", "tool", name, "err", err)
@@ -111,8 +145,8 @@ func friendly(err error) error {
 	return err
 }
 
-func New(st *store.Store, lb *layout.Builder, home, publicURL string) *mcp.Server {
-	srv := &Server{st: st, lb: lb, home: home, publicURL: strings.TrimSuffix(publicURL, "/")}
+func New(st *store.Store, lb *layout.Builder, home, publicURL, localUser string) *mcp.Server {
+	srv := &Server{st: st, lb: lb, home: home, publicURL: strings.TrimSuffix(publicURL, "/"), localUser: localUser, renders: account.NewLimiter(30, time.Minute)}
 	s := mcp.NewServer(&mcp.Implementation{Name: "folio", Version: "0.1.0"}, &mcp.ServerOptions{Instructions: instructions})
 	srv.register(s)
 	srv.registerEdit(s)
@@ -146,7 +180,7 @@ type MutationResult struct {
 
 func (s *Server) mutate(ctx context.Context, id string, expected *int, tool, summary string, fn func(nb *store.Notebook, bs []model.Block) ([]model.Block, []string, error)) (MutationResult, error) {
 	var changed []string
-	nb, bs, err := s.st.Mutate(id, expected, tool, summary, func(nb *store.Notebook, bs []model.Block) ([]model.Block, error) {
+	nb, bs, err := s.st.Mutate(userOf(ctx), id, expected, tool, summary, func(nb *store.Notebook, bs []model.Block) ([]model.Block, error) {
 		next, ch, err := fn(nb, bs)
 		changed = ch
 		return next, err

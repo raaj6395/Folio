@@ -34,7 +34,7 @@ func newClient(t *testing.T) *client {
 	}
 	ctx := context.Background()
 	stp, ctp := mcp.NewInMemoryTransports()
-	if _, err := New(st, lb, home, "").Connect(ctx, stp, nil); err != nil {
+	if _, err := New(st, lb, home, "", store.LocalUser).Connect(ctx, stp, nil); err != nil {
 		t.Fatal(err)
 	}
 	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "0"}, nil).Connect(ctx, ctp, nil)
@@ -362,5 +362,40 @@ func TestModes(t *testing.T) {
 	}
 	if r := c.raw("preview_diagram", map[string]any{"source": "a -> b", "mode": "light"}); r.IsError {
 		t.Fatal("light preview failed")
+	}
+}
+
+func TestRenameAndDeleteNotebook(t *testing.T) {
+	c := newClient(t)
+	var nb NotebookInfo
+	c.call("create_notebook", map[string]any{"title": "Old"}, &nb)
+	var renamed NotebookInfo
+	c.call("rename_notebook", map[string]any{"notebook_id": nb.ID, "title": "New name"}, &renamed)
+	if renamed.Title != "New name" || renamed.Version != 2 {
+		t.Fatalf("rename: %+v", renamed)
+	}
+	if msg := c.callErr("delete_notebook", map[string]any{"notebook_id": nb.ID}); !strings.Contains(msg, "confirm: true") {
+		t.Fatal(msg)
+	}
+	c.call("delete_notebook", map[string]any{"notebook_id": nb.ID, "confirm": true}, nil)
+	var list map[string][]NotebookInfo
+	c.call("list_notebooks", map[string]any{}, &list)
+	if len(list["notebooks"]) != 0 {
+		t.Fatalf("deleted notebook still listed: %+v", list)
+	}
+}
+
+func TestRenderRateLimit(t *testing.T) {
+	c := newClient(t)
+	var nb NotebookInfo
+	c.call("create_notebook", map[string]any{"title": "R"}, &nb)
+	c.call("append_blocks", map[string]any{"notebook_id": nb.ID, "blocks": blocksArg(`[{"type":"paragraph","text":"x"}]`)}, nil)
+	for i := range 30 {
+		if r := c.raw("render_pages", map[string]any{"notebook_id": nb.ID, "pages": []int{1}, "ppi": 30}); r.IsError {
+			t.Fatalf("render %d failed early", i+1)
+		}
+	}
+	if msg := c.callErr("render_pages", map[string]any{"notebook_id": nb.ID, "pages": []int{1}, "ppi": 30}); !strings.Contains(msg, "rendering limit reached") {
+		t.Fatal(msg)
 	}
 }
