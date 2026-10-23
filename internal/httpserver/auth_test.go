@@ -238,8 +238,8 @@ func TestAccountsTokensAndIsolation(t *testing.T) {
 		if resp, body := alice.get("/n/" + nb.ID); resp.StatusCode != 200 || !strings.Contains(body, "Alice secret") {
 			t.Errorf("alice viewer: %d", resp.StatusCode)
 		}
-		if resp, _ := alice.get("/n/" + nb.ID + "/page/1.png"); resp.Header.Get("Cache-Control") != "private, max-age=31536000, immutable" {
-			t.Errorf("page cache header: %q", resp.Header.Get("Cache-Control"))
+		if resp, _ := alice.get("/n/" + nb.ID + "/page/1.png"); resp.Header.Get("Cache-Control") != "no-store" {
+			t.Errorf("a page image requested without its current fingerprint must not be cached: %q", resp.Header.Get("Cache-Control"))
 		}
 		if _, body := bob.get("/"); strings.Contains(body, "Alice") {
 			t.Error("bob's dashboard shows alice's notebook")

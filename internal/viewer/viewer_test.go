@@ -103,6 +103,16 @@ func TestViewer(t *testing.T) {
 	if first.Version != 2 || first.PageCount != 1 {
 		t.Fatalf("first event: %+v", first)
 	}
+	for v, want := range map[string]string{first.Pages[0]: "private, max-age=31536000, immutable", "stale": "no-store"} {
+		resp, err := http.Get(srv.URL + "/n/" + nb.ID + "/page/1.png?v=" + v)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if got := resp.Header.Get("Cache-Control"); got != want {
+			t.Fatalf("page image with v=%s: Cache-Control %q, want %q", v, got, want)
+		}
+	}
 	start := time.Now()
 	addBlock(t, st, nb.ID, `{"type":"heading","level":2,"text":"**Second** part"}`)
 	select {
@@ -166,13 +176,4 @@ func get(t *testing.T, url string) string {
 		t.Fatalf("%s: %d %s", url, resp.StatusCode, b.String())
 	}
 	return b.String()
-}
-
-func TestSignaturesFollowDensity(t *testing.T) {
-	r := &layout.Result{PageCount: 1, Blocks: []layout.Pos{}}
-	a := signatures(store.Notebook{Density: "comfortable"}, nil, r)
-	b := signatures(store.Notebook{Density: "airy"}, nil, r)
-	if a[0] == b[0] {
-		t.Fatal("page fingerprints must change when the density changes")
-	}
 }

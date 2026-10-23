@@ -559,11 +559,11 @@ func (s *Server) Export(ctx context.Context, nb store.Notebook, bs []model.Block
 	if !filepath.IsAbs(path) || !strings.HasSuffix(strings.ToLower(path), ".pdf") {
 		return "", fmt.Errorf("path must be absolute and end in .pdf, got %q", path)
 	}
-	r, err := s.lb.Build(ctx, nb, bs)
+	pdf, err := s.lb.PDF(ctx, nb, bs)
 	if err != nil {
 		return "", err
 	}
-	data, err := os.ReadFile(r.PDF)
+	data, err := os.ReadFile(pdf)
 	if err != nil {
 		return "", err
 	}

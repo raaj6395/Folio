@@ -121,6 +121,24 @@ function load(div, src, tries = 0) {
   pre.src = src;
 }
 
+const pending = new Map();
+let flushTimer = null, burstStart = 0;
+
+function queue(n, src) {
+  pending.set(n, src);
+  const now = Date.now();
+  if (!flushTimer) burstStart = now;
+  clearTimeout(flushTimer);
+  flushTimer = setTimeout(flush, now - burstStart > 2800 ? 0 : 1200);
+}
+
+function flush() {
+  clearTimeout(flushTimer);
+  flushTimer = null;
+  pending.forEach((src, n) => pageEl(n) && load(pageEl(n), src));
+  pending.clear();
+}
+
 const ratios = new Map();
 const observer = new IntersectionObserver((entries) => {
   entries.forEach((e) => ratios.set(+e.target.id.slice(1), e.intersectionRatio));
@@ -254,8 +272,13 @@ function apply(s) {
     const div = pageEl(n) || addPage(n);
     const sig = s.pages[n - 1];
     if (sigs[n - 1] !== sig) {
-      load(div, "/n/" + id + "/page/" + n + ".png?v=" + s.version + "-" + sig + (view ? "&mode=" + view : ""));
-      if (!first) changed.push(n);
+      const src = "/n/" + id + "/page/" + n + ".png?v=" + sig + (view ? "&mode=" + view : "");
+      if (first) {
+        load(div, src);
+      } else {
+        queue(n, src);
+        changed.push(n);
+      }
     }
   }
   for (let n = count + 1; pageEl(n); n++) {
@@ -283,6 +306,9 @@ function connect() {
   if (es) es.close();
   sigs = [];
   first = true;
+  pending.clear();
+  clearTimeout(flushTimer);
+  flushTimer = null;
   es = new EventSource("/n/" + id + "/events" + q());
   es.onopen = () => setStatus("Live", "on");
   es.onerror = () => setStatus(navigator.onLine ? "Reconnecting…" : "Offline", "off");

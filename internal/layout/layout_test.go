@@ -47,7 +47,11 @@ func TestPageBreakPositions(t *testing.T) {
 	if r.PageCount != 2 || r.Page(bs[0].ID) != 1 || r.Page(bs[2].ID) != 2 {
 		t.Fatalf("layout: %+v", r)
 	}
-	if st, err := os.Stat(r.PDF); err != nil || st.Size() == 0 {
+	pdf, err := b.PDF(context.Background(), nb, bs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st, err := os.Stat(pdf); err != nil || st.Size() == 0 {
 		t.Fatalf("pdf missing: %v", err)
 	}
 }
@@ -112,8 +116,12 @@ func TestPagesMatchPDF(t *testing.T) {
 	if r.PageCount < 3 {
 		t.Fatalf("want >=3 pages, got %d", r.PageCount)
 	}
+	pdf, err := b.PDF(context.Background(), nb, bs)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for i, p := range r.Blocks {
-		out, err := exec.Command("pdftotext", "-f", fmt.Sprint(p.Page), "-l", fmt.Sprint(p.Page), r.PDF, "-").Output()
+		out, err := exec.Command("pdftotext", "-f", fmt.Sprint(p.Page), "-l", fmt.Sprint(p.Page), pdf, "-").Output()
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -48,7 +48,11 @@ func TestKitchenSinkAllThemes(t *testing.T) {
 				t.Logf("%s/%s/%s: %d pages, warnings: %v", th.Name, paper, mode, r.PageCount, r.Warnings)
 				if out != "" {
 					os.MkdirAll(out, 0o755)
-					exec.Command("cp", r.PDF, filepath.Join(out, "kitchen-sink-"+th.Name+"-"+paper+"-"+mode+".pdf")).Run()
+					pdf, err := b.PDF(context.Background(), nb, bs)
+					if err != nil {
+						t.Fatal(err)
+					}
+					exec.Command("cp", pdf, filepath.Join(out, "kitchen-sink-"+th.Name+"-"+paper+"-"+mode+".pdf")).Run()
 				}
 			}
 		}

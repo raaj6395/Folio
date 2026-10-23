@@ -2,9 +2,7 @@ package viewer
 
 import (
 	"context"
-	"crypto/sha256"
 	_ "embed"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -175,26 +173,7 @@ func (s *Server) state(r *http.Request) (State, error) {
 	if err != nil {
 		return State{}, err
 	}
-	return State{ID: nb.ID, Title: nb.Title, Theme: nb.Theme, Mode: nb.Mode, Version: nb.Version, PageCount: res.PageCount, UpdatedAt: nb.UpdatedAt, Pages: signatures(nb, bs, res), Outline: outline(bs, res)}, nil
-}
-
-func signatures(nb store.Notebook, bs []model.Block, r *layout.Result) []string {
-	hs := make([]*strings.Builder, r.PageCount)
-	for i := range hs {
-		hs[i] = &strings.Builder{}
-		fmt.Fprintf(hs[i], "%s|%s|%s|%s|%s|%d|", nb.Title, nb.Theme, nb.Paper, nb.Mode, nb.Density, r.PageCount)
-	}
-	for i, p := range r.Blocks {
-		for pg := max(p.Page, 1); pg <= min(max(p.EndPage, p.Page), r.PageCount); pg++ {
-			fmt.Fprintf(hs[pg-1], "%s:%s:%.1f;", p.ID, bs[i].Data, p.YMM)
-		}
-	}
-	out := make([]string, r.PageCount)
-	for i, h := range hs {
-		sum := sha256.Sum256([]byte(h.String()))
-		out[i] = hex.EncodeToString(sum[:6])
-	}
-	return out
+	return State{ID: nb.ID, Title: nb.Title, Theme: nb.Theme, Mode: nb.Mode, Version: nb.Version, PageCount: res.PageCount, UpdatedAt: nb.UpdatedAt, Pages: res.Fingerprints(nb, bs), Outline: outline(bs, res)}, nil
 }
 
 func renderError(w http.ResponseWriter, status int, title, msg string) {
@@ -321,6 +300,9 @@ func (s *Server) png(w http.ResponseWriter, r *http.Request, n, ppi int, all boo
 	}
 	w.Header().Set("Content-Type", "image/png")
 	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+	if all && r.URL.Query().Get("v") != res.Fingerprints(nb, bs)[n-1] {
+		w.Header().Set("Cache-Control", "no-store")
+	}
 	w.Write(pngs[slices.Index(pages, n)])
 }
 
@@ -368,12 +350,12 @@ func (s *Server) pdf(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	res, err := s.lb.Build(r.Context(), nb, bs)
+	path, err := s.lb.PDF(r.Context(), nb, bs)
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
-	data, err := os.ReadFile(res.PDF)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		s.fail(w, err)
 		return

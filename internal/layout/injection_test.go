@@ -38,7 +38,11 @@ func TestInjectionRendersLiterally(t *testing.T) {
 	if _, err := exec.LookPath("pdftotext"); err != nil {
 		t.Skip("pdftotext not installed; skipping literal-text check")
 	}
-	out, err := exec.Command("pdftotext", r.PDF, "-").Output()
+	pdf, err := b.PDF(context.Background(), nb, bs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := exec.Command("pdftotext", pdf, "-").Output()
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -13,9 +13,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/raaj6395/folio"
@@ -43,7 +45,7 @@ type Pos struct {
 
 type Result struct {
 	Key          string        `json:"key"`
-	PDF          string        `json:"pdf"`
+	DocHash      string        `json:"doc_hash"`
 	PageCount    int           `json:"page_count"`
 	Blocks       []Pos         `json:"blocks"`
 	LastPageFill float64       `json:"last_page_fill_pct"`
@@ -83,10 +85,16 @@ func (r *Result) Page(id string) int {
 }
 
 type Builder struct {
-	Home  string
-	Root  string
-	fonts string
-	mu    sync.Mutex
+	Home       string
+	Root       string
+	fonts      string
+	mu         sync.Mutex
+	runs       atomic.Int64
+	rasterised atomic.Int64
+}
+
+func (b *Builder) Stats() (typstRuns, pagesRasterised int64) {
+	return b.runs.Load(), b.rasterised.Load()
 }
 
 func New(home string) (*Builder, error) {
@@ -126,7 +134,8 @@ func (b *Builder) Dir(notebookID string) string {
 func (b *Builder) typst(ctx context.Context, dir string, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, Timeout)
 	defer cancel()
-	args = append(args, "--root", dir, "--font-path", b.fonts)
+	b.runs.Add(1)
+	args = append(args, "--root", dir, "--font-path", b.fonts, "--ignore-system-fonts", "-j", "1")
 	cmd := exec.CommandContext(ctx, "typst", args...)
 	cmd.Dir = dir
 	var stdout, stderr bytes.Buffer
@@ -204,20 +213,8 @@ func (b *Builder) build(ctx context.Context, nb store.Notebook, blocks []model.B
 	if err := os.WriteFile(filepath.Join(dir, "doc.json"), js, 0o644); err != nil {
 		return nil, err
 	}
-	var wg sync.WaitGroup
-	var pdfErr, qErr error
-	var raw []byte
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		_, pdfErr = b.typst(ctx, dir, "compile", "main.typ", "out.pdf")
-	}()
-	go func() {
-		defer wg.Done()
-		raw, qErr = b.typst(ctx, dir, "eval", `query(<blockpos>).map(it => (id: it.value.id, k: it.value.k, page: it.location().page(), y: it.location().position().y / 1pt, x: it.location().position().x / 1pt))`, "--in", "main.typ")
-	}()
-	wg.Wait()
-	if err := errors.Join(pdfErr, qErr); err != nil {
+	raw, err := b.typst(ctx, dir, "eval", `query(<blockpos>).map(it => (id: it.value.id, k: it.value.k, page: it.location().page(), y: it.location().position().y / 1pt, x: it.location().position().x / 1pt))`, "--in", "main.typ")
+	if err != nil {
 		return nil, err
 	}
 	var marks []mark
@@ -230,7 +227,7 @@ func (b *Builder) build(ctx context.Context, nb store.Notebook, blocks []model.B
 		r.Issues = append(r.Issues, is)
 		r.Warnings = append(r.Warnings, is.String())
 	}
-	r.Key, r.PDF = key(nb), filepath.Join(dir, "out.pdf")
+	r.Key, r.DocHash = key(nb), docHash(js)
 	r.Elapsed = time.Since(start)
 	js, _ = json.Marshal(r)
 	os.WriteFile(cachePath, js, 0o644)
@@ -238,10 +235,54 @@ func (b *Builder) build(ctx context.Context, nb store.Notebook, blocks []model.B
 	return r, nil
 }
 
+func docHash(js []byte) string {
+	sum := sha256.Sum256(js)
+	return hex.EncodeToString(sum[:8])
+}
+
+func (b *Builder) current(ctx context.Context, nb store.Notebook, blocks []model.Block) (*Result, error) {
+	r, err := b.build(ctx, nb, blocks)
+	if err != nil {
+		return nil, err
+	}
+	dir := b.Dir(nb.ID)
+	if js, err := os.ReadFile(filepath.Join(dir, "doc.json")); err == nil && docHash(js) == r.DocHash {
+		return r, nil
+	}
+	os.Remove(filepath.Join(dir, "layout.json"))
+	return b.build(ctx, nb, blocks)
+}
+
+func (b *Builder) PDF(ctx context.Context, nb store.Notebook, blocks []model.Block) (string, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	r, err := b.current(ctx, nb, blocks)
+	if err != nil {
+		return "", err
+	}
+	dir := b.Dir(nb.ID)
+	name := "out-" + r.Key + ".pdf"
+	if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
+		return filepath.Join(dir, name), nil
+	}
+	if _, err := b.typst(ctx, dir, "compile", "main.typ", name); err != nil {
+		return "", err
+	}
+	olds, _ := filepath.Glob(filepath.Join(dir, "out*.pdf"))
+	for _, o := range olds {
+		if filepath.Base(o) != name {
+			os.Remove(o)
+		}
+	}
+	return filepath.Join(dir, name), nil
+}
+
+var pruneAfter = 10 * time.Minute
+
 func (b *Builder) RenderPNG(ctx context.Context, nb store.Notebook, blocks []model.Block, pages []int, ppi int) ([][]byte, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	r, err := b.build(ctx, nb, blocks)
+	r, err := b.current(ctx, nb, blocks)
 	if err != nil {
 		return nil, err
 	}
@@ -251,33 +292,51 @@ func (b *Builder) RenderPNG(ctx context.Context, nb store.Notebook, blocks []mod
 		}
 	}
 	dir := b.Dir(nb.ID)
-	sub := filepath.Join("pages", fmt.Sprintf("%s-%dppi", r.Key, ppi))
-	if olds, _ := filepath.Glob(filepath.Join(dir, "pages", "*")); len(olds) > 0 {
-		for _, o := range olds {
-			if !strings.HasPrefix(filepath.Base(o), r.Key+"-") {
-				os.RemoveAll(o)
-			}
-		}
-	}
+	pdir := filepath.Join(dir, "pages")
+	fps := r.Fingerprints(nb, blocks)
+	file := func(p int) string { return filepath.Join(pdir, fmt.Sprintf("%s-%d.png", fps[p-1], ppi)) }
 	var missing []string
 	for _, p := range pages {
-		if _, err := os.Stat(filepath.Join(dir, sub, fmt.Sprintf("page-%d.png", p))); err != nil {
+		if _, err := os.Stat(file(p)); err != nil && !slices.Contains(missing, strconv.Itoa(p)) {
 			missing = append(missing, strconv.Itoa(p))
 		}
 	}
 	if len(missing) > 0 {
-		if err := os.MkdirAll(filepath.Join(dir, sub), 0o755); err != nil {
+		tmp := filepath.Join("pages", "tmp")
+		os.RemoveAll(filepath.Join(dir, tmp))
+		if err := os.MkdirAll(filepath.Join(dir, tmp), 0o755); err != nil {
 			return nil, err
 		}
-		if _, err := b.typst(ctx, dir, "compile", "main.typ", filepath.Join(sub, "page-{p}.png"), "--pages", strings.Join(missing, ","), "--ppi", strconv.Itoa(ppi)); err != nil {
+		if _, err := b.typst(ctx, dir, "compile", "main.typ", filepath.Join(tmp, "{p}.png"), "--pages", strings.Join(missing, ","), "--ppi", strconv.Itoa(ppi)); err != nil {
 			return nil, err
 		}
+		for _, p := range missing {
+			n, _ := strconv.Atoi(p)
+			if err := os.Rename(filepath.Join(dir, tmp, p+".png"), file(n)); err != nil {
+				return nil, err
+			}
+		}
+		b.rasterised.Add(int64(len(missing)))
+		prune(pdir, fps)
 	}
 	out := make([][]byte, len(pages))
 	for i, p := range pages {
-		if out[i], err = os.ReadFile(filepath.Join(dir, sub, fmt.Sprintf("page-%d.png", p))); err != nil {
+		if out[i], err = os.ReadFile(file(p)); err != nil {
 			return nil, err
 		}
 	}
 	return out, nil
+}
+
+func prune(pdir string, current []string) {
+	entries, _ := os.ReadDir(pdir)
+	for _, e := range entries {
+		fp, _, _ := strings.Cut(e.Name(), "-")
+		if slices.Contains(current, fp) {
+			continue
+		}
+		if info, err := e.Info(); err == nil && time.Since(info.ModTime()) >= pruneAfter {
+			os.RemoveAll(filepath.Join(pdir, e.Name()))
+		}
+	}
 }
