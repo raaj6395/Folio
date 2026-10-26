@@ -182,6 +182,7 @@ func TestAccountsTokensAndIsolation(t *testing.T) {
 
 		attacks := map[string]map[string]any{
 			"get_outline":             {},
+			"move_notebook":           {"folder": "pwned"},
 			"read_blocks":             {"block_ids": []string{blockID}},
 			"get_layout_info":         {},
 			"render_pages":            {"pages": []int{1}},

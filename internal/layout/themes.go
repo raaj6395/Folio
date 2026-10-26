@@ -121,7 +121,7 @@ func (b *Builder) PreviewPNG(ctx context.Context, src string, th Theme, mode, si
 		return nil, 0, 0, 0, err
 	}
 	w, h, pt := Fit(svg, size)
-	b.mu.Lock()
+	b.lock("preview", "_preview")
 	defer b.mu.Unlock()
 	bg := "white"
 	if mode == "dark" {

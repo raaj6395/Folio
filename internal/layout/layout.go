@@ -142,6 +142,7 @@ func (b *Builder) typst(ctx context.Context, dir string, args ...string) ([]byte
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	err := cmd.Run()
 	if ctx.Err() == context.DeadlineExceeded {
+		slog.Warn("typst timed out", "dir", dir, "cmd", args[0], "timeout_ms", Timeout.Milliseconds())
 		return nil, fmt.Errorf("typst timed out after %s", Timeout)
 	}
 	if err != nil {
@@ -178,21 +179,40 @@ func key(nb store.Notebook) string {
 	return fmt.Sprintf("v%d-%s-%s-%s-%s-t%s", nb.Version, nb.Theme, nb.Paper, nb.Mode, nb.Density, templateHash)
 }
 
-func (b *Builder) Build(ctx context.Context, nb store.Notebook, blocks []model.Block) (*Result, error) {
+// lock takes the builder lock, logging waits long enough to matter for a client timeout.
+func (b *Builder) lock(op, id string) {
+	start := time.Now()
 	b.mu.Lock()
+	if w := time.Since(start); w > time.Second {
+		slog.Info("waited for layout lock", "op", op, "id", id, "wait_ms", w.Milliseconds())
+	}
+}
+
+func (b *Builder) Build(ctx context.Context, nb store.Notebook, blocks []model.Block) (*Result, error) {
+	b.lock("build", nb.ID)
 	defer b.mu.Unlock()
 	return b.build(ctx, nb, blocks)
 }
 
+// Cached returns the stored layout for nb's current version, or nil. It never runs typst or takes the lock.
+func (b *Builder) Cached(nb store.Notebook) *Result {
+	data, err := os.ReadFile(filepath.Join(b.Dir(nb.ID), "layout.json"))
+	if err != nil {
+		return nil
+	}
+	var r Result
+	if json.Unmarshal(data, &r) != nil || r.Key != key(nb) {
+		return nil
+	}
+	return &r
+}
+
 func (b *Builder) build(ctx context.Context, nb store.Notebook, blocks []model.Block) (*Result, error) {
+	if r := b.Cached(nb); r != nil {
+		return r, nil
+	}
 	dir := b.Dir(nb.ID)
 	cachePath := filepath.Join(dir, "layout.json")
-	if data, err := os.ReadFile(cachePath); err == nil {
-		var r Result
-		if json.Unmarshal(data, &r) == nil && r.Key == key(nb) {
-			return &r, nil
-		}
-	}
 	start := time.Now()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
@@ -231,7 +251,7 @@ func (b *Builder) build(ctx context.Context, nb store.Notebook, blocks []model.B
 	r.Elapsed = time.Since(start)
 	js, _ = json.Marshal(r)
 	os.WriteFile(cachePath, js, 0o644)
-	slog.Info("built notebook", "id", nb.ID, "version", nb.Version, "pages", r.PageCount, "ms", r.Elapsed.Milliseconds())
+	slog.Info("built notebook", "id", nb.ID, "version", nb.Version, "mode", nb.Mode, "pages", r.PageCount, "ms", r.Elapsed.Milliseconds())
 	return r, nil
 }
 
@@ -254,7 +274,7 @@ func (b *Builder) current(ctx context.Context, nb store.Notebook, blocks []model
 }
 
 func (b *Builder) PDF(ctx context.Context, nb store.Notebook, blocks []model.Block) (string, error) {
-	b.mu.Lock()
+	b.lock("pdf", nb.ID)
 	defer b.mu.Unlock()
 	r, err := b.current(ctx, nb, blocks)
 	if err != nil {
@@ -280,7 +300,7 @@ func (b *Builder) PDF(ctx context.Context, nb store.Notebook, blocks []model.Blo
 var pruneAfter = 10 * time.Minute
 
 func (b *Builder) RenderPNG(ctx context.Context, nb store.Notebook, blocks []model.Block, pages []int, ppi int) ([][]byte, error) {
-	b.mu.Lock()
+	b.lock("png", nb.ID)
 	defer b.mu.Unlock()
 	r, err := b.current(ctx, nb, blocks)
 	if err != nil {
@@ -307,6 +327,7 @@ func (b *Builder) RenderPNG(ctx context.Context, nb store.Notebook, blocks []mod
 		if err := os.MkdirAll(filepath.Join(dir, tmp), 0o755); err != nil {
 			return nil, err
 		}
+		start := time.Now()
 		if _, err := b.typst(ctx, dir, "compile", "main.typ", filepath.Join(tmp, "{p}.png"), "--pages", strings.Join(missing, ","), "--ppi", strconv.Itoa(ppi)); err != nil {
 			return nil, err
 		}
@@ -317,6 +338,7 @@ func (b *Builder) RenderPNG(ctx context.Context, nb store.Notebook, blocks []mod
 			}
 		}
 		b.rasterised.Add(int64(len(missing)))
+		slog.Info("rasterised pages", "id", nb.ID, "version", nb.Version, "mode", nb.Mode, "pages", strings.Join(missing, ","), "ppi", ppi, "ms", time.Since(start).Milliseconds())
 		prune(pdir, fps)
 	}
 	out := make([][]byte, len(pages))

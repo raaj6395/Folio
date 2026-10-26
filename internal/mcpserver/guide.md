@@ -3,7 +3,7 @@
 Folio is a typesetter. You write **blocks**; Folio flows them onto A4 pages. You never place anything with coordinates.
 
 ## Workflow
-1. `create_notebook` (or `list_notebooks` to continue one). New notebooks use density `comfortable`.
+1. `create_notebook` (or `list_notebooks` to continue one). New notebooks use density `comfortable`. If the user names a folder or subject ("in my Networks folder"), pass `folder`; call `list_folders` first if unsure and reuse an existing folder rather than making a near-duplicate.
 2. Plan an outline: one page-sized H1 per major topic, H2 per subtopic.
 3. `append_blocks` a whole section at a time (up to 50 blocks per call).
 4. Read what each write returns: `page_count`, the page each new block landed on, `page_fill_pct`, `warnings` and `layout_hints`. Fix issues before moving on.

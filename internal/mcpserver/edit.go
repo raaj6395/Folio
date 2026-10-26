@@ -255,7 +255,7 @@ func (s *Server) registerEdit(m *mcp.Server) {
 			if err != nil {
 				return nil, nil, err
 			}
-			r, err := s.lb.Build(ctx, nb, bs)
+			r, err := s.build(ctx, nb, bs)
 			if err != nil {
 				return nil, nil, err
 			}

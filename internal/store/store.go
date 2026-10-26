@@ -112,6 +112,19 @@ var pgMigrations = []string{
 	ALTER TABLE notebooks ADD COLUMN density TEXT NOT NULL DEFAULT 'legacy';
 	ALTER TABLE snapshots ADD COLUMN guidelines TEXT;
 	ALTER TABLE snapshots ADD COLUMN density TEXT`,
+	`CREATE TABLE folders (
+		id TEXT PRIMARY KEY,
+		user_id TEXT NOT NULL REFERENCES users(id),
+		parent_id TEXT REFERENCES folders(id),
+		name TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL
+	);
+	CREATE INDEX folders_user ON folders(user_id, parent_id);
+	ALTER TABLE notebooks ADD COLUMN folder_id TEXT REFERENCES folders(id);
+	CREATE INDEX notebooks_folder ON notebooks(user_id, folder_id)`,
+	`ALTER TABLE folders ADD COLUMN color TEXT NOT NULL DEFAULT '';
+	ALTER TABLE notebooks ADD COLUMN favorite_at TEXT`,
 }
 
 var migrations = []string{
@@ -211,6 +224,19 @@ var migrations = []string{
 	ALTER TABLE notebooks ADD COLUMN density TEXT NOT NULL DEFAULT 'legacy';
 	ALTER TABLE snapshots ADD COLUMN guidelines TEXT;
 	ALTER TABLE snapshots ADD COLUMN density TEXT`,
+	`CREATE TABLE folders (
+		id TEXT PRIMARY KEY,
+		user_id TEXT NOT NULL REFERENCES users(id),
+		parent_id TEXT REFERENCES folders(id),
+		name TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL
+	);
+	CREATE INDEX folders_user ON folders(user_id, parent_id);
+	ALTER TABLE notebooks ADD COLUMN folder_id TEXT REFERENCES folders(id);
+	CREATE INDEX notebooks_folder ON notebooks(user_id, folder_id)`,
+	`ALTER TABLE folders ADD COLUMN color TEXT NOT NULL DEFAULT '';
+	ALTER TABLE notebooks ADD COLUMN favorite_at TEXT`,
 }
 
 const LocalUser = "u_local"
@@ -246,6 +272,8 @@ type Notebook struct {
 	UserID     string    `json:"-"`
 	Density    string    `json:"density"`
 	Guidelines string    `json:"-"`
+	FolderID   string    `json:"-"`
+	Favorite   bool      `json:"-"`
 }
 
 const (
@@ -380,23 +408,24 @@ type scanner interface{ Scan(...any) error }
 func scanNotebook(r scanner) (Notebook, error) {
 	var nb Notebook
 	var c, u string
-	var owner sql.NullString
-	err := r.Scan(&nb.ID, &nb.Title, &nb.Theme, &nb.Paper, &c, &u, &nb.Version, &nb.Mode, &owner, &nb.Guidelines, &nb.Density)
+	var owner, folder, fav sql.NullString
+	err := r.Scan(&nb.ID, &nb.Title, &nb.Theme, &nb.Paper, &c, &u, &nb.Version, &nb.Mode, &owner, &nb.Guidelines, &nb.Density, &folder, &fav)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nb, ErrNotFound
 	}
-	nb.CreatedAt, nb.UpdatedAt, nb.UserID = parseTS(c), parseTS(u), owner.String
+	nb.CreatedAt, nb.UpdatedAt, nb.UserID, nb.FolderID, nb.Favorite = parseTS(c), parseTS(u), owner.String, folder.String, fav.Valid
 	return nb, err
 }
 
-const nbCols = `id, title, theme, paper, created_at, updated_at, version, mode, user_id, guidelines, density`
+const nbCols = `id, title, theme, paper, created_at, updated_at, version, mode, user_id, guidelines, density, folder_id, favorite_at`
 
-func (s *Store) CreateNotebook(userID, title, theme, paper, mode, density string) (Notebook, error) {
+// CreateNotebook makes an empty notebook in folderID ("" = top level).
+func (s *Store) CreateNotebook(userID, title, theme, paper, mode, density, folderID string) (Notebook, error) {
 	now := time.Now()
 	if density == "" {
 		density = DefaultDensity
 	}
-	nb := Notebook{ID: model.NewID("n_"), Title: title, Theme: theme, Paper: paper, Mode: mode, CreatedAt: now, UpdatedAt: now, Version: 1, UserID: userID, Density: density}
+	nb := Notebook{ID: model.NewID("n_"), Title: title, Theme: theme, Paper: paper, Mode: mode, CreatedAt: now, UpdatedAt: now, Version: 1, UserID: userID, Density: density, FolderID: folderID}
 	if userID == "" {
 		return nb, errors.New("internal error: notebook without an owner")
 	}
@@ -412,7 +441,17 @@ func (s *Store) CreateNotebook(userID, title, theme, paper, mode, density string
 		return nb, err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(s.q(`INSERT INTO notebooks (`+nbCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?)`), nb.ID, title, theme, paper, ts(now), ts(now), 1, mode, userID, "", density); err != nil {
+	if folderID != "" {
+		var n int
+		if err := tx.QueryRow(s.q(`SELECT count(*) FROM folders WHERE id = ? AND user_id = ?`), folderID, userID).Scan(&n); err != nil {
+			return nb, err
+		}
+		if n == 0 {
+			return nb, fmt.Errorf("%w: folder %s", ErrNotFound, folderID)
+		}
+	}
+	folder := sql.NullString{String: folderID, Valid: folderID != ""}
+	if _, err := tx.Exec(s.q(`INSERT INTO notebooks (`+nbCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,NULL)`), nb.ID, title, theme, paper, ts(now), ts(now), 1, mode, userID, "", density, folder); err != nil {
 		return nb, err
 	}
 	if err := s.snapshot(tx, nb, nil, 1, "create_notebook", "created notebook"); err != nil {

@@ -36,15 +36,45 @@ type NotebookInfo struct {
 	PageCount  int       `json:"page_count"`
 	BlockCount int       `json:"block_count"`
 	UpdatedAt  time.Time `json:"updated_at"`
+	Folder     string    `json:"folder,omitempty"`
 }
 
 func (s *Server) info(ctx context.Context, nb store.Notebook) (NotebookInfo, error) {
+	return s.infoIn(ctx, nb, nil)
+}
+
+// folderKey normalises a folder path for matching: "semester 1 / Networks" → "semester 1/networks".
+func folderKey(path string) string {
+	parts := strings.Split(strings.Trim(strings.TrimSpace(path), "/"), "/")
+	for i, p := range parts {
+		parts[i] = strings.Join(strings.Fields(p), " ")
+	}
+	return strings.ToLower(strings.Join(parts, "/"))
+}
+
+// folderPaths maps the user's folder IDs to paths like "Semester 1/Networks".
+func (s *Server) folderPaths(ctx context.Context) (map[string]string, error) {
+	fs, err := s.st.Folders(userOf(ctx))
+	paths := map[string]string{}
+	for _, f := range fs {
+		paths[f.ID] = f.Path
+	}
+	return paths, err
+}
+
+// infoIn takes the folder paths when the caller already has them (nil: looked up if needed).
+func (s *Server) infoIn(ctx context.Context, nb store.Notebook, paths map[string]string) (NotebookInfo, error) {
 	bs, err := s.st.Blocks(nb.UserID, nb.ID)
 	if err != nil {
 		return NotebookInfo{}, err
 	}
-	info := NotebookInfo{ID: nb.ID, Title: nb.Title, Theme: nb.Theme, Paper: nb.Paper, Mode: nb.Mode, Density: nb.Density, Version: nb.Version, BlockCount: len(bs), UpdatedAt: nb.UpdatedAt}
-	if r, err := s.lb.Build(ctx, nb, bs); err == nil {
+	if paths == nil && nb.FolderID != "" {
+		if paths, err = s.folderPaths(ctx); err != nil {
+			return NotebookInfo{}, err
+		}
+	}
+	info := NotebookInfo{ID: nb.ID, Title: nb.Title, Theme: nb.Theme, Paper: nb.Paper, Mode: nb.Mode, Density: nb.Density, Version: nb.Version, BlockCount: len(bs), UpdatedAt: nb.UpdatedAt, Folder: paths[nb.FolderID]}
+	if r := s.lb.Cached(nb); r != nil {
 		info.PageCount = r.PageCount
 	}
 	return info, nil
@@ -56,6 +86,21 @@ type createIn struct {
 	Paper   string `json:"paper,omitempty" jsonschema:"Paper background: plain, ruled, dotted or grid. Defaults to the theme's paper"`
 	Mode    string `json:"mode,omitempty" jsonschema:"dark (default) or light. Use light only when the user asks for a light/white look or wants to print"`
 	Density string `json:"density,omitempty" jsonschema:"Spacing: compact, comfortable (default) or airy. The renderer adds gaps before headings and around boxes; no spacers needed"`
+	Folder  string `json:"folder,omitempty" jsonschema:"Folder path to file the notebook in, e.g. Semester 1/Networks (at most 3 levels). Missing folders are created; matching ignores case. Omit for the top level"`
+}
+
+type listIn struct {
+	Folder string `json:"folder,omitempty" jsonschema:"Only notebooks in this folder path and its sub-folders"`
+}
+
+type moveNotebookIn struct {
+	NotebookID string `json:"notebook_id" jsonschema:"ID of the notebook to move"`
+	Folder     string `json:"folder" jsonschema:"Folder path, e.g. Semester 1/Networks; missing folders are created. Empty string = top level"`
+}
+
+type FolderInfo struct {
+	Path          string `json:"path"`
+	NotebookCount int    `json:"notebook_count"`
 }
 
 type appendIn struct {
@@ -172,15 +217,23 @@ type ExportOut struct {
 }
 
 func (s *Server) register(m *mcp.Server) {
-	addTool(s, m, "list_notebooks", "List all notebooks, most recently updated first.",
-		func(ctx context.Context, _ *mcp.CallToolRequest, _ empty) (*mcp.CallToolResult, map[string][]NotebookInfo, error) {
+	addTool(s, m, "list_notebooks", "List notebooks, most recently updated first, with the folder each is in. Pass folder to list only that folder and its sub-folders.",
+		func(ctx context.Context, _ *mcp.CallToolRequest, in listIn) (*mcp.CallToolResult, map[string][]NotebookInfo, error) {
 			nbs, err := s.st.Notebooks(userOf(ctx))
 			if err != nil {
 				return nil, nil, err
 			}
+			paths, err := s.folderPaths(ctx)
+			if err != nil {
+				return nil, nil, err
+			}
+			want := folderKey(in.Folder)
 			out := []NotebookInfo{}
 			for _, nb := range nbs {
-				info, err := s.info(ctx, nb)
+				if p := folderKey(paths[nb.FolderID]); want != "" && p != want && !strings.HasPrefix(p, want+"/") {
+					continue
+				}
+				info, err := s.infoIn(ctx, nb, paths)
 				if err != nil {
 					return nil, nil, err
 				}
@@ -189,7 +242,38 @@ func (s *Server) register(m *mcp.Server) {
 			return nil, map[string][]NotebookInfo{"notebooks": out}, nil
 		})
 
-	addTool(s, m, "create_notebook", "Create a new empty notebook. Returns its ID.",
+	addTool(s, m, "list_folders", "List the user's folders (paths like Semester 1/Networks) with how many notebooks each holds, sub-folders included. Check it before filing a notebook so you reuse an existing folder.",
+		func(ctx context.Context, _ *mcp.CallToolRequest, _ empty) (*mcp.CallToolResult, map[string][]FolderInfo, error) {
+			fs, err := s.st.Folders(userOf(ctx))
+			if err != nil {
+				return nil, nil, err
+			}
+			out := []FolderInfo{}
+			for _, f := range fs {
+				out = append(out, FolderInfo{Path: f.Path, NotebookCount: f.Count})
+			}
+			return nil, map[string][]FolderInfo{"folders": out}, nil
+		})
+
+	addTool(s, m, "move_notebook", "Move a notebook into a folder (by path; missing folders are created) or to the top level with folder \"\". Doesn't change the notebook's content or version.",
+		func(ctx context.Context, _ *mcp.CallToolRequest, in moveNotebookIn) (*mcp.CallToolResult, NotebookInfo, error) {
+			nb, err := s.st.Notebook(userOf(ctx), in.NotebookID)
+			if err != nil {
+				return nil, NotebookInfo{}, err
+			}
+			f, err := s.st.EnsureFolderPath(userOf(ctx), in.Folder)
+			if err != nil {
+				return nil, NotebookInfo{}, err
+			}
+			if err := s.st.MoveNotebook(userOf(ctx), nb.ID, f.ID); err != nil {
+				return nil, NotebookInfo{}, err
+			}
+			nb.FolderID = f.ID
+			info, err := s.info(ctx, nb)
+			return nil, info, err
+		})
+
+	addTool(s, m, "create_notebook", "Create a new empty notebook, optionally in a folder. Returns its ID.",
 		func(ctx context.Context, _ *mcp.CallToolRequest, in createIn) (*mcp.CallToolResult, NotebookInfo, error) {
 			if strings.TrimSpace(in.Title) == "" {
 				return nil, NotebookInfo{}, fmt.Errorf("title must not be empty")
@@ -218,7 +302,11 @@ func (s *Server) register(m *mcp.Server) {
 			if err := validDensity(in.Density); err != nil {
 				return nil, NotebookInfo{}, err
 			}
-			nb, err := s.st.CreateNotebook(userOf(ctx), in.Title, in.Theme, in.Paper, in.Mode, in.Density)
+			folder, err := s.st.EnsureFolderPath(userOf(ctx), in.Folder)
+			if err != nil {
+				return nil, NotebookInfo{}, err
+			}
+			nb, err := s.st.CreateNotebook(userOf(ctx), in.Title, in.Theme, in.Paper, in.Mode, in.Density, folder.ID)
 			if err != nil {
 				return nil, NotebookInfo{}, err
 			}
@@ -246,7 +334,7 @@ func (s *Server) register(m *mcp.Server) {
 			if err != nil {
 				return nil, Outline{}, err
 			}
-			r, err := s.lb.Build(ctx, nb, bs)
+			r, err := s.build(ctx, nb, bs)
 			if err != nil {
 				return nil, Outline{}, err
 			}
@@ -266,7 +354,7 @@ func (s *Server) register(m *mcp.Server) {
 			if err != nil {
 				return nil, LayoutInfo{}, err
 			}
-			r, err := s.lb.Build(ctx, nb, bs)
+			r, err := s.build(ctx, nb, bs)
 			if err != nil {
 				return nil, LayoutInfo{}, err
 			}
@@ -347,7 +435,7 @@ func (s *Server) register(m *mcp.Server) {
 				return nil, ExportOut{}, err
 			}
 			if s.publicURL != "" {
-				if _, err := s.lb.Build(ctx, nb, bs); err != nil {
+				if _, err := s.build(ctx, nb, bs); err != nil {
 					return nil, ExportOut{}, err
 				}
 				return nil, ExportOut{URL: s.publicURL + "/n/" + nb.ID + "/pdf"}, nil
@@ -452,7 +540,7 @@ func (s *Server) register(m *mcp.Server) {
 			if err != nil {
 				return nil, CheckOut{}, err
 			}
-			r, err := s.lb.Build(ctx, nb, bs)
+			r, err := s.build(ctx, nb, bs)
 			if err != nil {
 				return nil, CheckOut{}, err
 			}

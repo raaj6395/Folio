@@ -59,7 +59,7 @@ func texts(t *testing.T, s *Store, id string) string {
 
 func TestMutateUndoRestore(t *testing.T) {
 	eachBackend(t, func(t *testing.T, s *Store) {
-		nb, err := s.CreateNotebook(LocalUser, "T", "clean", "plain", "light", "")
+		nb, err := s.CreateNotebook(LocalUser, "T", "clean", "plain", "light", "", "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -104,7 +104,7 @@ func TestMutateUndoRestore(t *testing.T) {
 
 func TestGuidelinesAndDensityAreVersioned(t *testing.T) {
 	eachBackend(t, func(t *testing.T, s *Store) {
-		nb, _ := s.CreateNotebook(LocalUser, "T", "clean", "plain", "light", "")
+		nb, _ := s.CreateNotebook(LocalUser, "T", "clean", "plain", "light", "", "")
 		if nb.Density != DefaultDensity {
 			t.Fatalf("new notebook density: %q", nb.Density)
 		}
@@ -137,7 +137,7 @@ func TestGuidelinesAndDensityAreVersioned(t *testing.T) {
 
 func TestExpectedVersionConflict(t *testing.T) {
 	eachBackend(t, func(t *testing.T, s *Store) {
-		nb, _ := s.CreateNotebook(LocalUser, "T", "clean", "plain", "light", "")
+		nb, _ := s.CreateNotebook(LocalUser, "T", "clean", "plain", "light", "", "")
 		stale := 0
 		_, _, err := s.Mutate(LocalUser, nb.ID, &stale, "x", "x", func(nb *Notebook, bs []model.Block) ([]model.Block, error) { return bs, nil })
 		if !errors.Is(err, ErrConflict) {
@@ -148,7 +148,7 @@ func TestExpectedVersionConflict(t *testing.T) {
 
 func TestSnapshotPruning(t *testing.T) {
 	eachBackend(t, func(t *testing.T, s *Store) {
-		nb, _ := s.CreateNotebook(LocalUser, "T", "clean", "plain", "light", "")
+		nb, _ := s.CreateNotebook(LocalUser, "T", "clean", "plain", "light", "", "")
 		for range keepSnapshots + 10 {
 			appendText(t, s, nb.ID, "x")
 		}
@@ -162,7 +162,7 @@ func TestSnapshotPruning(t *testing.T) {
 
 func TestSoftDelete(t *testing.T) {
 	eachBackend(t, func(t *testing.T, s *Store) {
-		nb, _ := s.CreateNotebook(LocalUser, "T", "clean", "plain", "light", "")
+		nb, _ := s.CreateNotebook(LocalUser, "T", "clean", "plain", "light", "", "")
 		if err := s.Delete(LocalUser, nb.ID); err != nil {
 			t.Fatal(err)
 		}
@@ -177,7 +177,7 @@ func TestSoftDelete(t *testing.T) {
 
 func TestPositionsSortByteOrder(t *testing.T) {
 	eachBackend(t, func(t *testing.T, s *Store) {
-		nb, _ := s.CreateNotebook(LocalUser, "T", "clean", "plain", "light", "")
+		nb, _ := s.CreateNotebook(LocalUser, "T", "clean", "plain", "light", "", "")
 		_, _, err := s.Mutate(LocalUser, nb.ID, nil, "x", "x", func(_ *Notebook, _ []model.Block) ([]model.Block, error) {
 			var bs []model.Block
 			for _, pos := range []string{"z1", "a", "Z", "a0b", "_"} {

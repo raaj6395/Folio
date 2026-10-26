@@ -35,31 +35,60 @@
   </details>{{end}}
 </header>
 <main id="main">
-{{if .Notebooks}}
+{{if or .All .HasFolders}}
+  {{with .Here}}<nav class="crumbs" aria-label="Folder path"><a href="/" data-drop="">Notebooks</a>{{range $.Crumbs}}<span aria-hidden="true">›</span>{{if eq .ID $.Here.ID}}<span aria-current="page">{{.Name}}</span>{{else}}<a href="/f/{{.ID}}" data-drop="{{.ID}}">{{.Name}}</a>{{end}}{{end}}</nav>
+  <a class="crumbs-up" href="{{$.Up}}">‹ {{$.UpName}}</a>{{end}}
   <div class="toolbar">
-    <h1>Notebooks <span class="meta">{{len .Notebooks}}</span></h1>
-    {{if gt (len .Notebooks) 6}}<input class="search" id="q" type="search" placeholder="Search notebooks  ( / )" aria-label="Search notebooks">
+    <h1>{{with .Here}}{{.Name}}{{else}}Notebooks{{end}}{{if .Notebooks}} <span class="meta">{{len .Notebooks}}</span>{{end}}</h1>
+    {{if .Search}}<input class="search" id="q" type="search" placeholder="Search all notebooks  ( / )" aria-label="Search notebooks">
     <select id="sort" aria-label="Sort notebooks"><option value="recent">Recently edited</option><option value="az">Title A–Z</option></select>{{end}}
+    {{if and .HasFolders .Notebooks}}<button class="btn secondary" type="button" id="selectBtn" aria-pressed="false">Select</button>{{end}}
+    {{if .CanNest}}<button class="btn secondary" type="button" id="newFolder" data-parent="{{with .Here}}{{.ID}}{{end}}">+ New folder</button>{{end}}
   </div>
-  <div class="grid" id="grid">
-  {{range .Notebooks}}<article class="nb" data-key="{{.ID}}:{{.Version}}" data-title="{{.Title}}" data-updated="{{.UpdatedAt.UTC.Format "2006-01-02T15:04:05Z07:00"}}">
-    <div class="thumb"><img alt="" loading="lazy" data-src="/n/{{.ID}}/thumb.png?v={{.Version}}"></div>
-    <div class="body">
-      <a class="t" href="/n/{{.ID}}">{{.Title}}</a>
-      <div class="foot"><span class="pill">{{.Theme}}</span><span class="pill">{{.Mode}}</span><time class="meta" datetime="{{.UpdatedAt.UTC.Format "2006-01-02T15:04:05Z07:00"}}">{{.UpdatedAt.Format "2 Jan 2006"}}</time></div>
-    </div>
-    <details class="menu">
-      <summary class="icon-btn" aria-label="Actions for {{.Title}}" title="Actions">⋯</summary>
-      <div class="pop">
-        <a class="item" href="/n/{{.ID}}">Open</a>
-        <a class="item" href="/n/{{.ID}}/pdf">Download PDF</a>
-        <button class="item" type="button" data-rename="{{.ID}}" data-current="{{.Title}}">Rename…</button>
-        <hr>
-        <form method="post" action="/n/{{.ID}}/delete"><button class="item danger" type="submit" data-confirm="Click again to delete">Delete</button></form>
+  {{with .Favorites}}<section data-browse>
+    <h2>Favourites</h2>
+    <div class="grid recent">{{range .}}{{template "card" .}}{{end}}</div>
+  </section>{{end}}
+  {{with .Recent}}<section data-browse>
+    <h2>Recent</h2>
+    <div class="grid recent">{{range .}}{{template "card" .}}{{end}}</div>
+  </section>{{end}}
+  {{with .Folders}}<section data-browse>
+    <h2>Folders</h2>
+    <div class="grid folders">{{range .}}<article class="nb folder{{with .Color}} c-{{.}}{{end}}" data-key="{{.ID}}:{{.Count}}:{{.Name}}:{{.Color}}" draggable="true" data-drag-folder="{{.ID}}" data-drop="{{.ID}}">
+      <div class="body">
+        <svg class="ficon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4.6l2 2.2h8.4A1.5 1.5 0 0 1 21 8.7v9.8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"/></svg>
+        <div class="fname"><a class="t" href="/f/{{.ID}}">{{.Name}}</a>
+        <span class="meta">{{.Count}} {{if eq .Count 1}}notebook{{else}}notebooks{{end}}</span></div>
       </div>
-    </details>
-  </article>
-  {{end}}</div>
+      <details class="menu">
+        <summary class="icon-btn" aria-label="Actions for folder {{.Name}}" title="Actions">⋯</summary>
+        <div class="pop">
+          <a class="item" href="/f/{{.ID}}">Open</a>
+          <button class="item" type="button" data-rename-folder="{{.ID}}" data-current="{{.Name}}">Rename…</button>
+          <button class="item" type="button" data-move-folder="{{.ID}}" data-path="{{.Path}}" data-parent="{{.ParentID}}">Move to…</button>
+          {{$f := .}}<form method="post" action="/f/{{.ID}}/color" class="swatches" aria-label="Folder colour">
+            <input type="hidden" name="back" class="back">
+            <button type="submit" name="color" value="" class="sw" title="Default" aria-label="Default colour" aria-pressed="{{eq $f.Color ""}}"></button>
+            {{range $.Colors}}<button type="submit" name="color" value="{{.}}" class="sw c-{{.}}" title="{{.}}" aria-label="{{.}}" aria-pressed="{{eq $f.Color .}}"></button>{{end}}
+          </form>
+          <hr>
+          <form method="post" action="/f/{{.ID}}/delete"><button class="item danger" type="submit" data-confirm="Click again: contents move up" title="Notebooks inside move to the folder above; none are deleted">Delete folder</button></form>
+        </div>
+      </details>
+    </article>{{end}}</div>
+  </section>{{end}}
+  {{if .Notebooks}}<section data-browse>
+    {{if or .Folders .Recent}}<h2>Notebooks</h2>{{end}}
+    <div class="grid" id="grid">{{range .Notebooks}}{{template "card" .}}{{end}}</div>
+  </section>{{else}}{{with .Here}}{{if not $.Folders}}<div class="empty" data-browse>
+    <h2>This folder is empty</h2>
+    <p class="meta">Ask Claude to make notes here, for example:</p>
+    <div class="copy prompt"><code id="pf">Make Folio notes on the key ideas of this topic in my {{.Path}} folder.</code><button class="btn secondary" type="button" data-copy="pf">Copy</button></div>
+  </div>{{end}}{{end}}{{end}}
+  {{if .HasFolders}}<ul class="results" id="results" hidden>{{range .All}}
+    <li data-title="{{.Title}}"><a href="/n/{{.ID}}">{{.Title}}</a><span class="meta">{{if .Path}}{{.Path}}{{else}}Notebooks{{end}}</span></li>{{end}}
+  </ul>{{end}}
   <p class="meta center" id="none" hidden>No notebooks match your search.</p>
 {{else}}
   <div class="empty">
@@ -82,9 +111,36 @@
 {{end}}
 </main>
 
+<dialog id="folderDlg" aria-labelledby="folderTitle">
+  <form method="post" id="folderForm">
+    <h2 id="folderTitle">New folder</h2>
+    <input type="hidden" name="parent_id" id="folderParent">
+    <input type="hidden" name="back" class="back">
+    <div class="field"><label for="folderName">Name</label><input id="folderName" type="text" name="name" required maxlength="80" pattern="[^/]+" title="Folder names can't contain /"></div>
+    <div class="actions"><button class="btn secondary" type="button" data-close>Cancel</button><button class="btn" type="submit">Save</button></div>
+  </form>
+</dialog>
+
+<dialog id="moveDlg" aria-labelledby="moveTitle">
+  <form method="post" id="moveForm">
+    <h2 id="moveTitle">Move to folder</h2>
+    <input type="hidden" name="back" class="back">
+    <div id="moveIds"></div>
+    <div class="field"><label for="moveTo">Folder</label><select id="moveTo" name="folder_id">{{range .Tree}}<option value="{{.ID}}" data-path="{{.Path}}">{{.Label}}</option>{{end}}</select></div>
+    <div class="actions"><button class="btn secondary" type="button" data-close>Cancel</button><button class="btn" type="submit">Move</button></div>
+  </form>
+</dialog>
+
+<div class="selbar" id="selbar" hidden>
+  <span id="selcount" role="status">0 selected</span>
+  <button class="btn" type="button" id="selMove" disabled>Move to…</button>
+  <button class="btn secondary" type="button" id="selCancel">Cancel</button>
+</div>
+
 <dialog id="renameDlg" aria-labelledby="renameTitle">
   <form method="post" id="renameForm">
     <h2 id="renameTitle">Rename notebook</h2>
+    <input type="hidden" name="back" class="back">
     <div class="field"><label for="newTitle">Title</label><input id="newTitle" type="text" name="title" required maxlength="200"></div>
     <div class="actions"><button class="btn secondary" type="button" data-close>Cancel</button><button class="btn" type="submit">Save</button></div>
   </form>
@@ -94,10 +150,11 @@
 <script>
 const main = document.getElementById("main");
 
-function post(action) {
+function post(action, fields = {}) {
   const f = document.createElement("form");
   f.method = "post";
   f.action = action;
+  for (const [name, value] of Object.entries(fields)) f.append(Object.assign(document.createElement("input"), { type: "hidden", name, value }));
   document.body.append(f);
   f.submit();
 }
@@ -110,36 +167,155 @@ function thumbs() {
   });
 }
 
+function dialog(id, action) {
+  const d = document.getElementById(id);
+  const f = d.querySelector("form");
+  f.action = action;
+  f.querySelectorAll(".back").forEach((i) => (i.value = location.pathname));
+  d.showModal();
+  return f;
+}
+
+// openMove moves one notebook (current = its folder), one folder (folderPath set) or several notebooks (ids).
+function openMove(action, { current = "", folderPath, ids } = {}) {
+  dialog("moveDlg", action);
+  const sel = document.getElementById("moveTo");
+  const isFolder = folderPath !== undefined;
+  sel.name = isFolder ? "parent_id" : "folder_id";
+  [...sel.options].forEach((o) => (o.disabled = isFolder && (o.dataset.path === folderPath || o.dataset.path.startsWith(folderPath + "/"))));
+  sel.value = current;
+  document.getElementById("moveIds").replaceChildren(...(ids || []).map((value) => Object.assign(document.createElement("input"), { type: "hidden", name: "id", value })));
+  document.getElementById("moveTitle").textContent = ids ? "Move " + ids.length + " notebook" + (ids.length === 1 ? "" : "s") : isFolder ? "Move folder" : "Move to folder";
+}
+
+const selbar = document.getElementById("selbar");
+const picked = () => [...main.querySelectorAll(".pick:checked")].map((c) => c.value);
+function setSelecting(on) {
+  main.classList.toggle("selecting", on);
+  selbar.hidden = !on;
+  document.getElementById("selectBtn")?.setAttribute("aria-pressed", String(on));
+  if (!on) main.querySelectorAll(".pick").forEach((c) => (c.checked = false));
+  countPicked();
+}
+function countPicked() {
+  const n = picked().length;
+  document.getElementById("selcount").textContent = n + " selected";
+  document.getElementById("selMove").disabled = n === 0;
+}
+main.addEventListener("change", (e) => e.target.matches(".pick") && countPicked());
+main.addEventListener("click", (e) => {
+  // While selecting, a click anywhere on a notebook card toggles it instead of opening it.
+  const card = main.classList.contains("selecting") && e.target.closest(".nb:has(.pick)");
+  if (!card || e.target.matches(".pick")) return;
+  e.preventDefault();
+  const box = card.querySelector(".pick");
+  box.checked = !box.checked;
+  countPicked();
+});
+document.getElementById("selCancel").onclick = () => setSelecting(false);
+document.getElementById("selMove").onclick = () => openMove("/notebooks/move", { ids: picked() });
+
+let dragging = null;
+function dragAndDrop() {
+  main.querySelectorAll("[draggable=true]").forEach((el) => {
+    el.addEventListener("dragstart", (e) => {
+      dragging = el.dataset.dragNb ? { nb: el.dataset.dragNb } : { folder: el.dataset.dragFolder };
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", el.dataset.title || "");
+      main.classList.add("dragging");
+    });
+    el.addEventListener("dragend", () => {
+      dragging = null;
+      main.classList.remove("dragging");
+      main.querySelectorAll(".over").forEach((t) => t.classList.remove("over"));
+    });
+  });
+  main.querySelectorAll("[data-drop]").forEach((t) => {
+    const ok = () => dragging && dragging.folder !== t.dataset.drop;
+    t.addEventListener("dragover", (e) => {
+      if (!ok()) return;
+      e.preventDefault();
+      t.classList.add("over");
+    });
+    t.addEventListener("dragleave", (e) => !t.contains(e.relatedTarget) && t.classList.remove("over"));
+    t.addEventListener("drop", (e) => {
+      if (!ok()) return;
+      e.preventDefault();
+      if (dragging.nb) post("/n/" + dragging.nb + "/move", { folder_id: t.dataset.drop, back: location.pathname });
+      else post("/f/" + dragging.folder + "/move", { parent_id: t.dataset.drop, back: location.pathname });
+    });
+  });
+}
+
+function nameFolder(title, action, current, parent) {
+  const f = dialog("folderDlg", action);
+  document.getElementById("folderTitle").textContent = title;
+  document.getElementById("folderParent").value = parent || "";
+  const input = document.getElementById("folderName");
+  input.value = current;
+  input.select();
+}
+
 function init() {
   thumbs();
+  const closeMenu = (b) => b.closest("details") && (b.closest("details").open = false);
   main.querySelectorAll("[data-rename]").forEach((b) => (b.onclick = () => {
-    b.closest("details").open = false;
-    document.getElementById("renameForm").action = "/n/" + b.dataset.rename + "/rename";
+    closeMenu(b);
+    dialog("renameDlg", "/n/" + b.dataset.rename + "/rename");
     const input = document.getElementById("newTitle");
     input.value = b.dataset.current;
-    document.getElementById("renameDlg").showModal();
     input.select();
   }));
+  main.querySelectorAll("[data-move]").forEach((b) => (b.onclick = () => {
+    closeMenu(b);
+    openMove("/n/" + b.dataset.move + "/move", { current: b.dataset.folder });
+  }));
+  main.querySelectorAll("[data-move-folder]").forEach((b) => (b.onclick = () => {
+    closeMenu(b);
+    openMove("/f/" + b.dataset.moveFolder + "/move", { current: b.dataset.parent, folderPath: b.dataset.path });
+  }));
+  main.querySelectorAll("input.back").forEach((i) => (i.value = location.pathname));
+  const sb = document.getElementById("selectBtn");
+  if (sb) sb.onclick = () => setSelecting(!main.classList.contains("selecting"));
+  dragAndDrop();
+  main.querySelectorAll("[data-rename-folder]").forEach((b) => (b.onclick = () => {
+    closeMenu(b);
+    nameFolder("Rename folder", "/f/" + b.dataset.renameFolder + "/rename", b.dataset.current);
+  }));
+  const nf = document.getElementById("newFolder");
+  if (nf) nf.onclick = () => nameFolder("New folder", "/folders", "", nf.dataset.parent);
+
   const q = document.getElementById("q");
   if (!q) return;
   const grid = document.getElementById("grid");
+  const results = document.getElementById("results");
   const sort = document.getElementById("sort");
-  const cards = [...grid.children];
+  const cards = grid ? [...grid.children] : [];
   q.oninput = () => {
     const term = q.value.trim().toLowerCase();
     let shown = 0;
-    cards.forEach((c) => {
-      c.hidden = !c.dataset.title.toLowerCase().includes(term);
-      shown += !c.hidden;
-    });
-    document.getElementById("none").hidden = shown > 0;
+    if (results) {
+      // With folders, search covers every folder: swap the folder view for a flat result list.
+      main.querySelectorAll("[data-browse]").forEach((e) => (e.hidden = !!term));
+      results.hidden = !term;
+      [...results.children].forEach((li) => {
+        li.hidden = !li.dataset.title.toLowerCase().includes(term);
+        shown += !li.hidden;
+      });
+    } else {
+      cards.forEach((c) => {
+        c.hidden = !c.dataset.title.toLowerCase().includes(term);
+        shown += !c.hidden;
+      });
+    }
+    document.getElementById("none").hidden = !term || shown > 0;
   };
   const order = () => {
     folio.store.set("folio-sort", sort.value);
     const by = sort.value === "az"
       ? (a, b) => a.dataset.title.localeCompare(b.dataset.title)
       : (a, b) => b.dataset.updated.localeCompare(a.dataset.updated);
-    grid.append(...[...cards].sort(by));
+    if (grid) grid.append(...[...cards].sort(by));
   };
   sort.value = folio.store.get("folio-sort") === "az" ? "az" : "recent";
   sort.onchange = order;
@@ -149,17 +325,17 @@ function init() {
 const keys = () => [...main.querySelectorAll("[data-key]")].map((e) => e.dataset.key);
 
 async function refresh() {
-  if (document.hidden || document.querySelector("details.menu[open], dialog[open]")) return;
+  if (document.hidden || dragging || main.classList.contains("selecting") || document.querySelector("details.menu[open], dialog[open]")) return;
   let res;
   try {
-    res = await fetch("/", { cache: "no-store" });
+    res = await fetch(location.pathname, { cache: "no-store" });
   } catch (e) {
     return;
   }
   if (!res.ok || res.redirected) return;
   const fresh = new DOMParser().parseFromString(await res.text(), "text/html").getElementById("main");
   const before = new Set(keys());
-  const after = [...fresh.querySelectorAll("[data-key]")].map((e) => e.dataset.key);
+  const after = [...new Set([...fresh.querySelectorAll("[data-key]")].map((e) => e.dataset.key))];
   if (after.length === before.size && after.every((k) => before.has(k))) return;
   const q = document.getElementById("q");
   const term = q ? q.value : "", focused = document.activeElement === q;
@@ -179,6 +355,7 @@ document.addEventListener("visibilitychange", refresh);
 document.addEventListener("folio:view", thumbs);
 
 document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && main.classList.contains("selecting") && !document.querySelector("dialog[open]")) setSelecting(false);
   const q = document.getElementById("q");
   if (q && e.key === "/" && !e.target.closest("input, select, textarea")) {
     e.preventDefault();
@@ -187,12 +364,40 @@ document.addEventListener("keydown", (e) => {
 });
 
 const params = new URLSearchParams(location.search);
+if (params.has("folder_deleted")) {
+  history.replaceState(null, "", location.pathname);
+  folio.toast("Deleted folder “" + params.get("folder_deleted") + "”. Everything in it moved here.");
+}
 if (params.has("deleted")) {
   const id = params.get("deleted");
-  history.replaceState(null, "", "/");
+  history.replaceState(null, "", location.pathname);
   folio.toast("Deleted “" + (params.get("title") || "notebook") + "”", { label: "Undo", run: () => post("/n/" + encodeURIComponent(id) + "/restore") }, "deleted", 9000);
 }
 init();
 </script>
 </body>
 </html>
+{{define "card"}}<article class="nb" data-key="{{.ID}}:{{.Version}}{{if .Favorite}}:f{{end}}"{{if .Movable}} draggable="true" data-drag-nb="{{.ID}}"{{end}} data-title="{{.Title}}" data-updated="{{.UpdatedAt.UTC.Format "2006-01-02T15:04:05Z07:00"}}">
+    <div class="thumb"><img alt="" loading="lazy" draggable="false" data-src="/n/{{.ID}}/thumb.png?v={{.Version}}"></div>
+    {{if .Movable}}<input type="checkbox" class="pick" value="{{.ID}}" aria-label="Select {{.Title}}">{{end}}
+    <form method="post" action="/n/{{.ID}}/favorite" class="fav">
+      <input type="hidden" name="back" class="back"><input type="hidden" name="on" value="{{if .Favorite}}0{{else}}1{{end}}">
+      <button class="icon-btn" type="submit" aria-pressed="{{.Favorite}}" aria-label="Favourite" title="{{if .Favorite}}Remove from favourites{{else}}Add to favourites{{end}}">{{if .Favorite}}★{{else}}☆{{end}}</button>
+    </form>
+    <div class="body">
+      <a class="t" href="/n/{{.ID}}">{{.Title}}</a>
+      <div class="foot">{{if .Path}}<span class="pill" title="Folder">{{.Path}}</span>{{else}}<span class="pill">{{.Theme}}</span><span class="pill">{{.Mode}}</span>{{end}}<time class="meta" datetime="{{.UpdatedAt.UTC.Format "2006-01-02T15:04:05Z07:00"}}">{{.UpdatedAt.Format "2 Jan 2006"}}</time></div>
+    </div>
+    <details class="menu">
+      <summary class="icon-btn" aria-label="Actions for {{.Title}}" title="Actions">⋯</summary>
+      <div class="pop">
+        <a class="item" href="/n/{{.ID}}">Open</a>
+        <a class="item" href="/n/{{.ID}}/pdf">Download PDF</a>
+        <button class="item" type="button" data-rename="{{.ID}}" data-current="{{.Title}}">Rename…</button>
+        {{if .Movable}}<button class="item" type="button" data-move="{{.ID}}" data-folder="{{.FolderID}}">Move to…</button>{{end}}
+        <form method="post" action="/n/{{.ID}}/favorite"><input type="hidden" name="back" class="back"><input type="hidden" name="on" value="{{if .Favorite}}0{{else}}1{{end}}"><button class="item" type="submit">{{if .Favorite}}Remove from favourites{{else}}Add to favourites{{end}}</button></form>
+        <hr>
+        <form method="post" action="/n/{{.ID}}/delete"><button class="item danger" type="submit" data-confirm="Click again to delete">Delete</button></form>
+      </div>
+    </details>
+  </article>{{end}}
