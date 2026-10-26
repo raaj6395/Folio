@@ -14,6 +14,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/raaj6395/folio/internal/layout"
+	"github.com/raaj6395/folio/internal/notetemplates"
 	"github.com/raaj6395/folio/internal/store"
 )
 
@@ -496,5 +497,85 @@ func TestSlowLayoutRepliesAfterSave(t *testing.T) {
 	c.call("get_layout_info", map[string]any{"notebook_id": nb.ID}, &info)
 	if info.Version != 2 || info.PageCount != 1 {
 		t.Fatalf("layout after background build: %+v", info)
+	}
+}
+
+func TestTemplates(t *testing.T) {
+	c := newClient(t)
+	if msg := c.callErr("create_notebook", map[string]any{"title": "x", "template": "leetcode"}); !strings.Contains(msg, "dsa_problem") {
+		t.Fatalf("unknown template should list the valid ones: %s", msg)
+	}
+	var nb NotebookInfo
+	c.call("create_notebook", map[string]any{"title": "Sliding window", "template": "dsa_problem"}, &nb)
+	if nb.Template != "dsa_problem" || nb.Density != "compact" {
+		t.Fatalf("template and its default density: %+v", nb)
+	}
+	var list map[string][]NotebookInfo
+	c.call("list_notebooks", map[string]any{}, &list)
+	if list["notebooks"][0].Template != "dsa_problem" {
+		t.Fatalf("list_notebooks: %+v", list)
+	}
+
+	text := func(args map[string]any) string {
+		return c.raw("get_authoring_guide", args).Content[0].(*mcp.TextContent).Text
+	}
+	if g := text(map[string]any{"template": "dsa_problem"}); !strings.HasPrefix(g, "# Template: DSA problem") || !strings.Contains(g, "Required H2 headings: Problem, Approach, Code, Complexity") || strings.Contains(g, "# Layout rules") {
+		t.Fatalf("blueprint only: %.300s", g)
+	}
+	if g := text(map[string]any{}); !strings.Contains(g, "# Templates") || !strings.Contains(g, "- cheat_sheet: ") {
+		t.Fatal("the full guide ends with the template index")
+	}
+	if ins := c.cs.InitializeResult().Instructions; !strings.Contains(ins, "- dsa_problem: ") || !strings.Contains(ins, "template=<id>") {
+		t.Fatal("instructions must list the templates")
+	}
+
+	// A problem missing Code and Complexity: flagged as a hint, not scored.
+	var res MutationResult
+	c.call("append_blocks", map[string]any{"notebook_id": nb.ID, "blocks": blocksArg(`[
+		{"type":"heading","level":1,"text":"1. Two Sum"},
+		{"type":"heading","level":2,"text":"Problem"},
+		{"type":"paragraph","text":"Return the indices of two numbers that add up to the target."},
+		{"type":"heading","level":2,"text":"Approach"},
+		{"type":"paragraph","text":"Store each number's index in a hash map and look up target minus the current number."}
+	]`)}, &res)
+	if !strings.Contains(res.TemplateChecklist, "dry run") || len(res.LayoutHints) == 0 || !strings.Contains(res.LayoutHints[0], "missing_section ("+res.ChangedBlockIDs[0]+")") {
+		t.Fatalf("first write: checklist and a missing_section hint first: %+v", res)
+	}
+	var check CheckOut
+	c.call("check_layout", map[string]any{"notebook_id": nb.ID}, &check)
+	if check.Score != 100 || len(check.Pages[0].Issues) != 1 || !strings.Contains(check.Pages[0].Issues[0].Problem, `no "Code", "Complexity" heading`) {
+		t.Fatalf("check_layout: %+v", check)
+	}
+	var res2 MutationResult
+	c.call("append_blocks", map[string]any{"notebook_id": nb.ID, "blocks": blocksArg(`[{"type":"heading","level":2,"text":"Code"},{"type":"heading","level":2,"text":"Complexity"}]`)}, &res2)
+	if res2.TemplateChecklist != "" || strings.Contains(strings.Join(res2.LayoutHints, " "), "missing_section") {
+		t.Fatalf("checklist only on the first write, hint gone once fixed: %+v", res2)
+	}
+	var out Outline
+	c.call("get_outline", map[string]any{"notebook_id": nb.ID}, &out)
+	if out.Template != "dsa_problem" {
+		t.Fatalf("outline: %+v", out)
+	}
+}
+
+// Each template's example, as Claude would write it, lays out cleanly.
+func TestTemplateSkeletonsLayOutWell(t *testing.T) {
+	c := newClient(t)
+	for _, tpl := range notetemplates.All {
+		t.Run(tpl.ID, func(t *testing.T) {
+			var nb NotebookInfo
+			c.call("create_notebook", map[string]any{"title": tpl.Name, "template": tpl.ID}, &nb)
+			c.call("append_blocks", map[string]any{"notebook_id": nb.ID, "blocks": tpl.Skeleton()}, nil)
+			var check CheckOut
+			c.call("check_layout", map[string]any{"notebook_id": nb.ID}, &check)
+			for _, p := range check.Pages {
+				for _, is := range p.Issues {
+					t.Errorf("page %d: %s: %s", p.Page, is.Check, is.Problem)
+				}
+			}
+			if check.Score < 90 || len(check.Pages) != 1 {
+				t.Errorf("score %d on %d page(s), want at least 90 on one page: an example is one unit, and a unit fits a page", check.Score, len(check.Pages))
+			}
+		})
 	}
 }

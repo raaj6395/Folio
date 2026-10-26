@@ -8,7 +8,7 @@ import (
 
 type rawNotebook struct {
 	ID, Title, Theme, Paper, Mode, CreatedAt, UpdatedAt string
-	Guidelines, Density                                 string
+	Guidelines, Density, Template                       string
 	Version                                             int
 	DeletedAt                                           sql.NullString
 }
@@ -30,14 +30,14 @@ type ImportResult struct {
 }
 
 func (s *Store) ImportFrom(src *Store, ownerID string, includeDeleted, dryRun bool) ([]ImportResult, error) {
-	rows, err := src.db.Query(`SELECT id, title, theme, paper, mode, created_at, updated_at, version, deleted_at, guidelines, density FROM notebooks ORDER BY created_at`)
+	rows, err := src.db.Query(`SELECT id, title, theme, paper, mode, created_at, updated_at, version, deleted_at, guidelines, density, template FROM notebooks ORDER BY created_at`)
 	if err != nil {
 		return nil, err
 	}
 	var nbs []rawNotebook
 	for rows.Next() {
 		var n rawNotebook
-		if err := rows.Scan(&n.ID, &n.Title, &n.Theme, &n.Paper, &n.Mode, &n.CreatedAt, &n.UpdatedAt, &n.Version, &n.DeletedAt, &n.Guidelines, &n.Density); err != nil {
+		if err := rows.Scan(&n.ID, &n.Title, &n.Theme, &n.Paper, &n.Mode, &n.CreatedAt, &n.UpdatedAt, &n.Version, &n.DeletedAt, &n.Guidelines, &n.Density, &n.Template); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -109,8 +109,8 @@ func (s *Store) importOne(src *Store, n rawNotebook, ownerID string) error {
 	}
 	defer tx.Rollback()
 	owner := sql.NullString{String: ownerID, Valid: ownerID != ""}
-	if _, err := tx.Exec(s.q(`INSERT INTO notebooks (id, title, theme, paper, mode, created_at, updated_at, version, deleted_at, user_id, guidelines, density) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`),
-		n.ID, n.Title, n.Theme, n.Paper, n.Mode, n.CreatedAt, n.UpdatedAt, n.Version, n.DeletedAt, owner, n.Guidelines, n.Density); err != nil {
+	if _, err := tx.Exec(s.q(`INSERT INTO notebooks (id, title, theme, paper, mode, created_at, updated_at, version, deleted_at, user_id, guidelines, density, template) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`),
+		n.ID, n.Title, n.Theme, n.Paper, n.Mode, n.CreatedAt, n.UpdatedAt, n.Version, n.DeletedAt, owner, n.Guidelines, n.Density, n.Template); err != nil {
 		return err
 	}
 	for _, b := range blocks {

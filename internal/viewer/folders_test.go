@@ -34,7 +34,7 @@ func TestFolderViews(t *testing.T) {
 		return resp
 	}
 
-	loose, _ := st.CreateNotebook(store.LocalUser, "Loose notes", "clean", "plain", "dark", "", "")
+	loose, _ := st.CreateNotebook(store.LocalUser, store.Notebook{Title: "Loose notes", Theme: "clean", Paper: "plain", Mode: "dark"})
 	if body := get(t, srv.URL+"/"); strings.Contains(body, "<h2>Recent</h2>") || strings.Contains(body, "data-move=") {
 		t.Error("without folders the dashboard must look as before")
 	}
@@ -105,8 +105,8 @@ func TestFolderViews(t *testing.T) {
 	if resp := post("/f/"+sem.ID+"/move", url.Values{"parent_id": {arch.ID}}); resp.StatusCode != 400 {
 		t.Errorf("folder into its own child: %d", resp.StatusCode)
 	}
-	n1, _ := st.CreateNotebook(store.LocalUser, "One", "clean", "plain", "dark", "", "")
-	n2, _ := st.CreateNotebook(store.LocalUser, "Two", "clean", "plain", "dark", "", "")
+	n1, _ := st.CreateNotebook(store.LocalUser, store.Notebook{Title: "One", Theme: "clean", Paper: "plain", Mode: "dark"})
+	n2, _ := st.CreateNotebook(store.LocalUser, store.Notebook{Title: "Two", Theme: "clean", Paper: "plain", Mode: "dark"})
 	post("/notebooks/move", url.Values{"id": {n1.ID, n2.ID}, "folder_id": {arch.ID}})
 	for _, id := range []string{n1.ID, n2.ID} {
 		if n, _ := st.Notebook(store.LocalUser, id); n.FolderID != arch.ID {
@@ -127,5 +127,26 @@ func TestFolderViews(t *testing.T) {
 	b, _ := io.ReadAll(resp.Body)
 	if strings.Contains(string(b), "Forged") {
 		t.Error("cross-site POST created a folder")
+	}
+}
+
+func TestTemplatePill(t *testing.T) {
+	home := t.TempDir()
+	st, err := store.Open(filepath.Join(home, "folio.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	lb, _ := layout.New(home)
+	srv := httptest.NewServer(New(st, lb, Local, false))
+	defer srv.Close()
+	st.CreateNotebook(store.LocalUser, store.Notebook{Title: "Two Sum", Theme: "clean", Paper: "plain", Mode: "dark", Template: "dsa_problem"})
+	st.CreateNotebook(store.LocalUser, store.Notebook{Title: "DNS", Theme: "clean", Paper: "plain", Mode: "dark", Template: "topic"})
+	body := get(t, srv.URL+"/")
+	if !strings.Contains(body, `data-kind="DSA"`) || !strings.Contains(body, `<span class="pill" title="Template">DSA</span>`) {
+		t.Fatalf("templated card shows its pill and search key: %.2000s", body)
+	}
+	if strings.Count(body, `title="Template"`) != 1 {
+		t.Fatal("topic notebooks get no pill")
 	}
 }

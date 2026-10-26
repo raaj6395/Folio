@@ -47,14 +47,14 @@ func TestFolders(t *testing.T) {
 			t.Errorf("bob sees folders: %+v", bf)
 		}
 
-		nb, err := s.CreateNotebook(a.ID, "TCP", "clean", "plain", "dark", "", lab.ID)
+		nb, err := s.CreateNotebook(a.ID, Notebook{Title: "TCP", Theme: "clean", Paper: "plain", Mode: "dark", FolderID: lab.ID})
 		if err != nil || nb.FolderID != lab.ID {
 			t.Fatalf("create in folder: %v", err)
 		}
-		if _, err := s.CreateNotebook(b.ID, "x", "clean", "plain", "dark", "", lab.ID); !errors.Is(err, ErrNotFound) {
+		if _, err := s.CreateNotebook(b.ID, Notebook{Title: "x", Theme: "clean", Paper: "plain", Mode: "dark", FolderID: lab.ID}); !errors.Is(err, ErrNotFound) {
 			t.Errorf("bob created a notebook in alice's folder: %v", err)
 		}
-		bobNB, _ := s.CreateNotebook(b.ID, "bob", "clean", "plain", "dark", "", "")
+		bobNB, _ := s.CreateNotebook(b.ID, Notebook{Title: "bob", Theme: "clean", Paper: "plain", Mode: "dark"})
 		if err := s.MoveNotebook(b.ID, bobNB.ID, sem.ID); !errors.Is(err, ErrNotFound) {
 			t.Errorf("bob moved his notebook into alice's folder: %v", err)
 		}
@@ -153,7 +153,7 @@ func TestFolderPolish(t *testing.T) {
 		}
 
 		// Favourites don't touch version or updated_at; owner only.
-		nb, _ := s.CreateNotebook(a.ID, "n", "clean", "plain", "dark", "", "")
+		nb, _ := s.CreateNotebook(a.ID, Notebook{Title: "n", Theme: "clean", Paper: "plain", Mode: "dark"})
 		if err := s.SetFavorite(a.ID, nb.ID, true); err != nil {
 			t.Fatal(err)
 		}
@@ -169,8 +169,8 @@ func TestFolderPolish(t *testing.T) {
 		}
 
 		// Bulk move skips IDs that aren't the user's.
-		nb2, _ := s.CreateNotebook(a.ID, "n2", "clean", "plain", "dark", "", "")
-		bobs, _ := s.CreateNotebook(b.ID, "bob", "clean", "plain", "dark", "", "")
+		nb2, _ := s.CreateNotebook(a.ID, Notebook{Title: "n2", Theme: "clean", Paper: "plain", Mode: "dark"})
+		bobs, _ := s.CreateNotebook(b.ID, Notebook{Title: "bob", Theme: "clean", Paper: "plain", Mode: "dark"})
 		n, err := s.MoveNotebooks(a.ID, []string{nb.ID, nb2.ID, bobs.ID, "n_missing"}, xy.ID)
 		if err != nil || n != 2 {
 			t.Fatalf("bulk move: %d %v", n, err)

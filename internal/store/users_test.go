@@ -15,7 +15,7 @@ func TestIsolationBetweenUsers(t *testing.T) {
 			t.Fatal(err)
 		}
 		b, _ := s.CreateUser("b@example.com", "h")
-		nb, err := s.CreateNotebook(a.ID, "secret", "clean", "plain", "dark", "", "")
+		nb, err := s.CreateNotebook(a.ID, Notebook{Title: "secret", Theme: "clean", Paper: "plain", Mode: "dark"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -127,9 +127,9 @@ func TestQuotas(t *testing.T) {
 		MaxNotebooks = 2
 		defer func() { MaxNotebooks = old }()
 		u, _ := s.CreateUser("q@example.com", "h")
-		s.CreateNotebook(u.ID, "1", "clean", "plain", "dark", "", "")
-		s.CreateNotebook(u.ID, "2", "clean", "plain", "dark", "", "")
-		if _, err := s.CreateNotebook(u.ID, "3", "clean", "plain", "dark", "", ""); !errors.Is(err, ErrQuota) {
+		s.CreateNotebook(u.ID, Notebook{Title: "1", Theme: "clean", Paper: "plain", Mode: "dark"})
+		s.CreateNotebook(u.ID, Notebook{Title: "2", Theme: "clean", Paper: "plain", Mode: "dark"})
+		if _, err := s.CreateNotebook(u.ID, Notebook{Title: "3", Theme: "clean", Paper: "plain", Mode: "dark"}); !errors.Is(err, ErrQuota) {
 			t.Fatalf("notebook quota: %v", err)
 		}
 	})

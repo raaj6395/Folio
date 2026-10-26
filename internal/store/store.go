@@ -125,6 +125,7 @@ var pgMigrations = []string{
 	CREATE INDEX notebooks_folder ON notebooks(user_id, folder_id)`,
 	`ALTER TABLE folders ADD COLUMN color TEXT NOT NULL DEFAULT '';
 	ALTER TABLE notebooks ADD COLUMN favorite_at TEXT`,
+	`ALTER TABLE notebooks ADD COLUMN template TEXT NOT NULL DEFAULT ''`,
 }
 
 var migrations = []string{
@@ -237,6 +238,7 @@ var migrations = []string{
 	CREATE INDEX notebooks_folder ON notebooks(user_id, folder_id)`,
 	`ALTER TABLE folders ADD COLUMN color TEXT NOT NULL DEFAULT '';
 	ALTER TABLE notebooks ADD COLUMN favorite_at TEXT`,
+	`ALTER TABLE notebooks ADD COLUMN template TEXT NOT NULL DEFAULT ''`,
 }
 
 const LocalUser = "u_local"
@@ -274,6 +276,7 @@ type Notebook struct {
 	Guidelines string    `json:"-"`
 	FolderID   string    `json:"-"`
 	Favorite   bool      `json:"-"`
+	Template   string    `json:"-"`
 }
 
 const (
@@ -409,7 +412,7 @@ func scanNotebook(r scanner) (Notebook, error) {
 	var nb Notebook
 	var c, u string
 	var owner, folder, fav sql.NullString
-	err := r.Scan(&nb.ID, &nb.Title, &nb.Theme, &nb.Paper, &c, &u, &nb.Version, &nb.Mode, &owner, &nb.Guidelines, &nb.Density, &folder, &fav)
+	err := r.Scan(&nb.ID, &nb.Title, &nb.Theme, &nb.Paper, &c, &u, &nb.Version, &nb.Mode, &owner, &nb.Guidelines, &nb.Density, &folder, &fav, &nb.Template)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nb, ErrNotFound
 	}
@@ -417,15 +420,16 @@ func scanNotebook(r scanner) (Notebook, error) {
 	return nb, err
 }
 
-const nbCols = `id, title, theme, paper, created_at, updated_at, version, mode, user_id, guidelines, density, folder_id, favorite_at`
+const nbCols = `id, title, theme, paper, created_at, updated_at, version, mode, user_id, guidelines, density, folder_id, favorite_at, template`
 
-// CreateNotebook makes an empty notebook in folderID ("" = top level).
-func (s *Store) CreateNotebook(userID, title, theme, paper, mode, density, folderID string) (Notebook, error) {
+// CreateNotebook makes an empty notebook from nb's title, theme, paper, mode, density,
+// folder ("" = top level) and template; IDs, timestamps and the version are set here.
+func (s *Store) CreateNotebook(userID string, nb Notebook) (Notebook, error) {
 	now := time.Now()
-	if density == "" {
-		density = DefaultDensity
+	if nb.Density == "" {
+		nb.Density = DefaultDensity
 	}
-	nb := Notebook{ID: model.NewID("n_"), Title: title, Theme: theme, Paper: paper, Mode: mode, CreatedAt: now, UpdatedAt: now, Version: 1, UserID: userID, Density: density, FolderID: folderID}
+	nb.ID, nb.CreatedAt, nb.UpdatedAt, nb.Version, nb.UserID = model.NewID("n_"), now, now, 1, userID
 	if userID == "" {
 		return nb, errors.New("internal error: notebook without an owner")
 	}
@@ -441,17 +445,17 @@ func (s *Store) CreateNotebook(userID, title, theme, paper, mode, density, folde
 		return nb, err
 	}
 	defer tx.Rollback()
-	if folderID != "" {
+	if nb.FolderID != "" {
 		var n int
-		if err := tx.QueryRow(s.q(`SELECT count(*) FROM folders WHERE id = ? AND user_id = ?`), folderID, userID).Scan(&n); err != nil {
+		if err := tx.QueryRow(s.q(`SELECT count(*) FROM folders WHERE id = ? AND user_id = ?`), nb.FolderID, userID).Scan(&n); err != nil {
 			return nb, err
 		}
 		if n == 0 {
-			return nb, fmt.Errorf("%w: folder %s", ErrNotFound, folderID)
+			return nb, fmt.Errorf("%w: folder %s", ErrNotFound, nb.FolderID)
 		}
 	}
-	folder := sql.NullString{String: folderID, Valid: folderID != ""}
-	if _, err := tx.Exec(s.q(`INSERT INTO notebooks (`+nbCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,NULL)`), nb.ID, title, theme, paper, ts(now), ts(now), 1, mode, userID, "", density, folder); err != nil {
+	folder := sql.NullString{String: nb.FolderID, Valid: nb.FolderID != ""}
+	if _, err := tx.Exec(s.q(`INSERT INTO notebooks (`+nbCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,NULL,?)`), nb.ID, nb.Title, nb.Theme, nb.Paper, ts(now), ts(now), 1, nb.Mode, userID, nb.Guidelines, nb.Density, folder, nb.Template); err != nil {
 		return nb, err
 	}
 	if err := s.snapshot(tx, nb, nil, 1, "create_notebook", "created notebook"); err != nil {

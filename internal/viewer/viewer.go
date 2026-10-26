@@ -18,6 +18,7 @@ import (
 
 	"github.com/raaj6395/folio/internal/layout"
 	"github.com/raaj6395/folio/internal/model"
+	"github.com/raaj6395/folio/internal/notetemplates"
 	"github.com/raaj6395/folio/internal/store"
 )
 
@@ -219,6 +220,9 @@ type card struct {
 	Path    string
 	Movable bool
 }
+
+// Kind is the card's template pill, e.g. "DSA" ("" for none).
+func (c card) Kind() string { return notetemplates.Label(c.Template) }
 
 type treeItem struct{ ID, Label, Path string }
 
