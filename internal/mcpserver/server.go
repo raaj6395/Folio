@@ -26,6 +26,7 @@ const instructions = `Folio typesets study notes onto A4 pages. You write struct
 
 Notebooks are dark by default; pass mode "light" to create_notebook (or set_theme) only when the user asks for light/printing. Density (compact, comfortable default, airy) adds gaps automatically.
 Every block has a stable ID (b_xxxxxxxx); use IDs for small targeted edits instead of rewriting.
+Folders: when the user names a folder, course or subject to keep notes in, pass folder to create_notebook (a path like "Semester 1/Networks", at most 3 levels) or use move_notebook. Call list_folders first if unsure and reuse an existing folder; don't invent folders the user didn't ask for.
 
 Layout rules (full version in get_authoring_guide):
 - Each H1 section fits on one page; put a page_break before every H1 except the first.

@@ -11,11 +11,11 @@ func TestImportFrom(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer src.Close()
-	a, _ := src.CreateNotebook(LocalUser, "A", "clean", "plain", "dark", "airy")
+	a, _ := src.CreateNotebook(LocalUser, "A", "clean", "plain", "dark", "airy", "")
 	src.db.Exec(`UPDATE notebooks SET guidelines = 'Short paragraphs.' WHERE id = ?`, a.ID)
 	appendText(t, src, a.ID, "x")
 	appendText(t, src, a.ID, "y", "z")
-	gone, _ := src.CreateNotebook(LocalUser, "Gone", "clean", "plain", "light", "")
+	gone, _ := src.CreateNotebook(LocalUser, "Gone", "clean", "plain", "light", "", "")
 	src.Delete(LocalUser, gone.ID)
 
 	eachBackend(t, func(t *testing.T, dst *Store) {

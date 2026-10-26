@@ -277,7 +277,8 @@ No. Your text reaches the typesetter only as data, never as code, so nothing ins
 - [ ] **Speed:** faster rendering and fewer round trips ([plan](PERFORMANCE_PLAN.md))
 - [ ] Version history panel in the viewer, with one-click restore
 - [ ] Read-only share links
-- [ ] Search inside notebooks; tags or folders
+- [x] Folders (and Claude files notes into them)
+- [ ] Search inside notebooks
 - [ ] Install on your phone's home screen
 - [ ] Anki export from Q&A cards; Cornell and flashcard note styles
 

@@ -18,7 +18,7 @@
 <body>
 <a class="skip" href="#pages">Skip to pages</a>
 <header class="bar">
-  <a class="icon-btn" href="/" title="All notebooks" aria-label="All notebooks">←</a>
+  <a class="icon-btn" href="{{if .FolderID}}/f/{{.FolderID}}{{else}}/{{end}}" title="Back to notebooks" aria-label="Back to notebooks">←</a>
   <button class="icon-btn" type="button" id="outlineBtn" title="Contents (o)" aria-label="Contents" aria-controls="outline" aria-expanded="false" hidden>☰</button>
   <span class="grow title" id="title">{{.Title}}</span>
   <span class="live" id="status" role="status">Connecting…</span>

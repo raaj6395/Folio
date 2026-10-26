@@ -87,6 +87,15 @@ func New(st *store.Store, lb *layout.Builder, user func(*http.Request) (id, emai
 	mux.Handle("POST /n/{id}/rename", cop.Handler(s.require(true, s.rename)))
 	mux.Handle("POST /n/{id}/delete", cop.Handler(s.require(true, s.del)))
 	mux.Handle("POST /n/{id}/restore", cop.Handler(s.require(true, s.restore)))
+	mux.Handle("POST /n/{id}/move", cop.Handler(s.require(true, s.move)))
+	mux.HandleFunc("GET /f/{id}", s.require(true, s.folder))
+	mux.Handle("POST /folders", cop.Handler(s.require(true, s.createFolder)))
+	mux.Handle("POST /f/{id}/rename", cop.Handler(s.require(true, s.renameFolder)))
+	mux.Handle("POST /f/{id}/delete", cop.Handler(s.require(true, s.deleteFolder)))
+	mux.Handle("POST /f/{id}/move", cop.Handler(s.require(true, s.moveFolder)))
+	mux.Handle("POST /f/{id}/color", cop.Handler(s.require(true, s.colorFolder)))
+	mux.Handle("POST /n/{id}/favorite", cop.Handler(s.require(true, s.favorite)))
+	mux.Handle("POST /notebooks/move", cop.Handler(s.require(true, s.moveMany)))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		renderError(w, http.StatusNotFound, "Page not found", "There's nothing at this address.")
 	})
@@ -184,6 +193,18 @@ func renderError(w http.ResponseWriter, status int, title, msg string) {
 }
 
 func (s *Server) fail(w http.ResponseWriter, err error) {
+	if errors.Is(err, store.ErrInvalid) || errors.Is(err, store.ErrQuota) {
+		_, msg, ok := strings.Cut(err.Error(), ": ")
+		if !ok || msg == "" {
+			msg = err.Error()
+		}
+		renderError(w, http.StatusBadRequest, "Can't do that", strings.ToUpper(msg[:1])+msg[1:]+".")
+		return
+	}
+	if errors.Is(err, store.ErrNotFound) && strings.Contains(err.Error(), "folder") {
+		renderError(w, http.StatusNotFound, "Folder not found", "It may have been deleted, or it belongs to another account.")
+		return
+	}
 	if errors.Is(err, store.ErrNotFound) {
 		renderError(w, http.StatusNotFound, "Notebook not found", "It may have been deleted, or it belongs to another account.")
 		return
@@ -192,21 +213,166 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 	renderError(w, http.StatusInternalServerError, "Something went wrong", "Folio couldn't load this. Try again in a moment.")
 }
 
-func (s *Server) index(w http.ResponseWriter, r *http.Request) {
+// card is a notebook on the dashboard with the path of its folder ("" at the top level).
+type card struct {
+	store.Notebook
+	Path    string
+	Movable bool
+}
+
+type treeItem struct{ ID, Label, Path string }
+
+func folderURL(id string) string {
+	if id == "" {
+		return "/"
+	}
+	return "/f/" + id
+}
+
+// safeBack keeps redirects on dashboard pages.
+func safeBack(back string) string {
+	if rest, ok := strings.CutPrefix(back, "/f/"); ok && rest != "" && !strings.ContainsAny(rest, "/\\?#") {
+		return back
+	}
+	return "/"
+}
+
+func (s *Server) index(w http.ResponseWriter, r *http.Request) { s.library(w, r, "") }
+
+func (s *Server) folder(w http.ResponseWriter, r *http.Request) { s.library(w, r, r.PathValue("id")) }
+
+func (s *Server) library(w http.ResponseWriter, r *http.Request, folderID string) {
 	nbs, err := s.st.Notebooks(uid(r))
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
-	email, _ := r.Context().Value(emailKey{}).(string)
-	connected := false
-	if s.auth && len(nbs) == 0 {
-		if connected, err = s.st.HasConnection(uid(r)); err != nil {
-			slog.Error("has connection", "err", err)
+	folders, err := s.st.Folders(uid(r))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	byID := map[string]store.Folder{}
+	for _, f := range folders {
+		byID[f.ID] = f
+	}
+	here, ok := byID[folderID]
+	if folderID != "" && !ok {
+		renderError(w, http.StatusNotFound, "Folder not found", "It may have been deleted, or it belongs to another account.")
+		return
+	}
+	var crumbs, subs []store.Folder
+	for f, ok := here, ok; ok; f, ok = byID[f.ParentID] {
+		crumbs = append([]store.Folder{f}, crumbs...)
+	}
+	tree := []treeItem{{"", "Notebooks (top level)", ""}}
+	for _, f := range folders {
+		if f.ParentID == folderID {
+			subs = append(subs, f)
+		}
+		tree = append(tree, treeItem{f.ID, strings.Repeat("\u00a0\u00a0\u00a0", f.Depth) + f.Name, f.Path})
+	}
+	var inHere, all, favs []card
+	for _, nb := range nbs {
+		c := card{nb, byID[nb.FolderID].Path, len(folders) > 0}
+		all = append(all, c)
+		if nb.Favorite {
+			favs = append(favs, c)
+		}
+		if nb.FolderID == folderID {
+			inHere = append(inHere, card{nb, "", c.Movable})
 		}
 	}
+	data := map[string]any{"Notebooks": inHere, "All": all, "Folders": subs, "HasFolders": len(folders) > 0, "Tree": tree, "Crumbs": crumbs,
+		"CanNest": !ok || here.Depth < store.MaxFolderDepth, "Search": len(folders) > 0 || len(nbs) > 6, "Auth": s.auth}
+	if ok {
+		data["Here"], data["Up"], data["UpName"] = here, folderURL(here.ParentID), "Notebooks"
+		if p, has := byID[here.ParentID]; has {
+			data["UpName"] = p.Name
+		}
+	} else {
+		data["Favorites"] = favs
+		if len(folders) > 0 {
+			data["Recent"] = all[:min(4, len(all))]
+		}
+	}
+	data["Colors"] = store.FolderColors
+	data["Email"], _ = r.Context().Value(emailKey{}).(string)
+	if s.auth && len(nbs) == 0 {
+		connected, err := s.st.HasConnection(uid(r))
+		if err != nil {
+			slog.Error("has connection", "err", err)
+		}
+		data["Connected"] = connected
+	}
 	w.Header().Set("Cache-Control", "no-store")
-	indexTmpl.Execute(w, map[string]any{"Notebooks": nbs, "Email": email, "Auth": s.auth, "Connected": connected})
+	indexTmpl.Execute(w, data)
+}
+
+func (s *Server) createFolder(w http.ResponseWriter, r *http.Request) {
+	if _, err := s.st.CreateFolder(uid(r), r.FormValue("parent_id"), r.FormValue("name")); err != nil {
+		s.fail(w, err)
+		return
+	}
+	http.Redirect(w, r, safeBack(r.FormValue("back")), http.StatusSeeOther)
+}
+
+func (s *Server) renameFolder(w http.ResponseWriter, r *http.Request) {
+	if err := s.st.RenameFolder(uid(r), r.PathValue("id"), r.FormValue("name")); err != nil {
+		s.fail(w, err)
+		return
+	}
+	http.Redirect(w, r, safeBack(r.FormValue("back")), http.StatusSeeOther)
+}
+
+func (s *Server) deleteFolder(w http.ResponseWriter, r *http.Request) {
+	f, err := s.st.DeleteFolder(uid(r), r.PathValue("id"))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	http.Redirect(w, r, folderURL(f.ParentID)+"?"+url.Values{"folder_deleted": {f.Name}}.Encode(), http.StatusSeeOther)
+}
+
+func (s *Server) moveFolder(w http.ResponseWriter, r *http.Request) {
+	if err := s.st.MoveFolder(uid(r), r.PathValue("id"), r.FormValue("parent_id")); err != nil {
+		s.fail(w, err)
+		return
+	}
+	http.Redirect(w, r, safeBack(r.FormValue("back")), http.StatusSeeOther)
+}
+
+func (s *Server) colorFolder(w http.ResponseWriter, r *http.Request) {
+	if err := s.st.SetFolderColor(uid(r), r.PathValue("id"), r.FormValue("color")); err != nil {
+		s.fail(w, err)
+		return
+	}
+	http.Redirect(w, r, safeBack(r.FormValue("back")), http.StatusSeeOther)
+}
+
+func (s *Server) favorite(w http.ResponseWriter, r *http.Request) {
+	if err := s.st.SetFavorite(uid(r), r.PathValue("id"), r.FormValue("on") == "1"); err != nil {
+		s.fail(w, err)
+		return
+	}
+	http.Redirect(w, r, safeBack(r.FormValue("back")), http.StatusSeeOther)
+}
+
+func (s *Server) moveMany(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	if _, err := s.st.MoveNotebooks(uid(r), r.PostForm["id"], r.FormValue("folder_id")); err != nil {
+		s.fail(w, err)
+		return
+	}
+	http.Redirect(w, r, safeBack(r.FormValue("back")), http.StatusSeeOther)
+}
+
+func (s *Server) move(w http.ResponseWriter, r *http.Request) {
+	if err := s.st.MoveNotebook(uid(r), r.PathValue("id"), r.FormValue("folder_id")); err != nil {
+		s.fail(w, err)
+		return
+	}
+	http.Redirect(w, r, safeBack(r.FormValue("back")), http.StatusSeeOther)
 }
 
 func (s *Server) notebook(w http.ResponseWriter, r *http.Request) {
@@ -324,7 +490,7 @@ func (s *Server) rename(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	http.Redirect(w, r, safeBack(r.FormValue("back")), http.StatusSeeOther)
 }
 
 func (s *Server) del(w http.ResponseWriter, r *http.Request) {
@@ -336,7 +502,7 @@ func (s *Server) del(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	http.Redirect(w, r, "/?"+url.Values{"deleted": {nb.ID}, "title": {nb.Title}}.Encode(), http.StatusSeeOther)
+	http.Redirect(w, r, folderURL(nb.FolderID)+"?"+url.Values{"deleted": {nb.ID}, "title": {nb.Title}}.Encode(), http.StatusSeeOther)
 }
 
 func (s *Server) restore(w http.ResponseWriter, r *http.Request) {
@@ -344,7 +510,8 @@ func (s *Server) restore(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	nb, _ := s.st.Notebook(uid(r), r.PathValue("id"))
+	http.Redirect(w, r, folderURL(nb.FolderID), http.StatusSeeOther)
 }
 
 func (s *Server) pdf(w http.ResponseWriter, r *http.Request) {
