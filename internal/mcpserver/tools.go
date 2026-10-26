@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"github.com/raaj6395/folio/internal/diagram"
 	"github.com/raaj6395/folio/internal/layout"
 	"github.com/raaj6395/folio/internal/model"
+	"github.com/raaj6395/folio/internal/notetemplates"
 	"github.com/raaj6395/folio/internal/store"
 	"github.com/raaj6395/folio/internal/viewer"
 )
@@ -37,6 +39,7 @@ type NotebookInfo struct {
 	BlockCount int       `json:"block_count"`
 	UpdatedAt  time.Time `json:"updated_at"`
 	Folder     string    `json:"folder,omitempty"`
+	Template   string    `json:"template,omitempty"`
 }
 
 func (s *Server) info(ctx context.Context, nb store.Notebook) (NotebookInfo, error) {
@@ -73,7 +76,7 @@ func (s *Server) infoIn(ctx context.Context, nb store.Notebook, paths map[string
 			return NotebookInfo{}, err
 		}
 	}
-	info := NotebookInfo{ID: nb.ID, Title: nb.Title, Theme: nb.Theme, Paper: nb.Paper, Mode: nb.Mode, Density: nb.Density, Version: nb.Version, BlockCount: len(bs), UpdatedAt: nb.UpdatedAt, Folder: paths[nb.FolderID]}
+	info := NotebookInfo{ID: nb.ID, Title: nb.Title, Theme: nb.Theme, Paper: nb.Paper, Mode: nb.Mode, Density: nb.Density, Version: nb.Version, BlockCount: len(bs), UpdatedAt: nb.UpdatedAt, Folder: paths[nb.FolderID], Template: nb.Template}
 	if r := s.lb.Cached(nb); r != nil {
 		info.PageCount = r.PageCount
 	}
@@ -81,12 +84,20 @@ func (s *Server) infoIn(ctx context.Context, nb store.Notebook, paths map[string
 }
 
 type createIn struct {
-	Title   string `json:"title" jsonschema:"Notebook title, shown in the page header"`
-	Theme   string `json:"theme,omitempty" jsonschema:"Visual theme; default clean. See list_themes"`
-	Paper   string `json:"paper,omitempty" jsonschema:"Paper background: plain, ruled, dotted or grid. Defaults to the theme's paper"`
-	Mode    string `json:"mode,omitempty" jsonschema:"dark (default) or light. Use light only when the user asks for a light/white look or wants to print"`
-	Density string `json:"density,omitempty" jsonschema:"Spacing: compact, comfortable (default) or airy. The renderer adds gaps before headings and around boxes; no spacers needed"`
-	Folder  string `json:"folder,omitempty" jsonschema:"Folder path to file the notebook in, e.g. Semester 1/Networks (at most 3 levels). Missing folders are created; matching ignores case. Omit for the top level"`
+	Title    string     `json:"title" jsonschema:"Notebook title, shown in the page header"`
+	Theme    string     `json:"theme,omitempty" jsonschema:"Visual theme; default clean. See list_themes"`
+	Paper    string     `json:"paper,omitempty" jsonschema:"Paper background: plain, ruled, dotted or grid. Defaults to the theme's paper"`
+	Mode     string     `json:"mode,omitempty" jsonschema:"dark (default) or light. Use light only when the user asks for a light/white look or wants to print"`
+	Density  string     `json:"density,omitempty" jsonschema:"Spacing: compact, comfortable (default) or airy. The renderer adds gaps before headings and around boxes; no spacers needed"`
+	Folder   string     `json:"folder,omitempty" jsonschema:"Folder path to file the notebook in, e.g. Semester 1/Networks (at most 3 levels). Missing folders are created; matching ignores case. Omit for the top level"`
+	Template templateID `json:"template,omitempty" jsonschema:"Note template (see instructions); Folio checks its required sections"`
+}
+
+// templateID is a note template's ID; schemaFor lists the valid IDs as its enum.
+type templateID string
+
+type guideIn struct {
+	Template templateID `json:"template,omitempty" jsonschema:"Return only this template's blueprint"`
 }
 
 type listIn struct {
@@ -126,6 +137,7 @@ type Outline struct {
 	Density    string         `json:"density"`
 	PageCount  int            `json:"page_count"`
 	Guidelines string         `json:"notebook_guidelines,omitempty"`
+	Template   string         `json:"template,omitempty"`
 	Blocks     []OutlineEntry `json:"blocks"`
 }
 
@@ -296,8 +308,12 @@ func (s *Server) register(m *mcp.Server) {
 			if err := validMode(in.Mode); err != nil {
 				return nil, NotebookInfo{}, err
 			}
+			tpl, err := templateOf(in.Template)
+			if err != nil {
+				return nil, NotebookInfo{}, err
+			}
 			if in.Density == "" {
-				in.Density = store.DefaultDensity
+				in.Density = cmp.Or(tpl.Density, store.DefaultDensity)
 			}
 			if err := validDensity(in.Density); err != nil {
 				return nil, NotebookInfo{}, err
@@ -306,7 +322,7 @@ func (s *Server) register(m *mcp.Server) {
 			if err != nil {
 				return nil, NotebookInfo{}, err
 			}
-			nb, err := s.st.CreateNotebook(userOf(ctx), in.Title, in.Theme, in.Paper, in.Mode, in.Density, folder.ID)
+			nb, err := s.st.CreateNotebook(userOf(ctx), store.Notebook{Title: in.Title, Theme: in.Theme, Paper: in.Paper, Mode: in.Mode, Density: in.Density, FolderID: folder.ID, Template: tpl.ID})
 			if err != nil {
 				return nil, NotebookInfo{}, err
 			}
@@ -338,7 +354,7 @@ func (s *Server) register(m *mcp.Server) {
 			if err != nil {
 				return nil, Outline{}, err
 			}
-			out := Outline{NotebookID: nb.ID, Title: nb.Title, Version: nb.Version, Theme: nb.Theme, Mode: nb.Mode, Density: nb.Density, PageCount: r.PageCount, Guidelines: nb.Guidelines, Blocks: []OutlineEntry{}}
+			out := Outline{NotebookID: nb.ID, Title: nb.Title, Version: nb.Version, Theme: nb.Theme, Mode: nb.Mode, Density: nb.Density, PageCount: r.PageCount, Guidelines: nb.Guidelines, Template: nb.Template, Blocks: []OutlineEntry{}}
 			for _, b := range bs {
 				out.Blocks = append(out.Blocks, OutlineEntry{ID: b.ID, Type: b.Type, Page: r.Page(b.ID), Summary: b.Summary()})
 				for _, k := range b.Children() {
@@ -358,6 +374,7 @@ func (s *Server) register(m *mcp.Server) {
 			if err != nil {
 				return nil, LayoutInfo{}, err
 			}
+			r = checked(nb, bs, r)
 			return nil, LayoutInfo{Version: nb.Version, PageCount: r.PageCount, PageFill: r.PageFill, Blocks: r.Blocks, Warnings: r.Warnings}, nil
 		})
 
@@ -534,7 +551,7 @@ func (s *Server) register(m *mcp.Server) {
 			return nil, out, nil
 		})
 
-	addTool(s, m, "check_layout", "Score a notebook's layout (0-100) and list every layout issue per page with block IDs and a concrete fix. Call it before saying you are done.",
+	addTool(s, m, "check_layout", "Score a notebook's layout (0-100) and list every layout issue per page with block IDs and a concrete fix, plus missing template sections (not scored). Call it before saying you are done.",
 		func(ctx context.Context, _ *mcp.CallToolRequest, in checkIn) (*mcp.CallToolResult, CheckOut, error) {
 			nb, bs, err := s.load(ctx, in.NotebookID)
 			if err != nil {
@@ -544,7 +561,7 @@ func (s *Server) register(m *mcp.Server) {
 			if err != nil {
 				return nil, CheckOut{}, err
 			}
-			score, pages := r.Report()
+			score, pages := checked(nb, bs, r).Report()
 			if len(in.Pages) > 0 {
 				var sel []layout.PageReport
 				total := 0
@@ -587,9 +604,37 @@ func (s *Server) register(m *mcp.Server) {
 		})
 
 	addTool(s, m, "get_authoring_guide", "How to write good Folio notes: every block type with an example, and style guidance. Read it once before writing.",
-		func(ctx context.Context, _ *mcp.CallToolRequest, _ empty) (*mcp.CallToolResult, any, error) {
-			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: guide}}}, nil, nil
+		func(ctx context.Context, _ *mcp.CallToolRequest, in guideIn) (*mcp.CallToolResult, any, error) {
+			text := guide
+			if in.Template != "" {
+				tpl, err := templateOf(in.Template)
+				if err != nil {
+					return nil, nil, err
+				}
+				text = tpl.Guide()
+			}
+			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: text}}}, nil, nil
 		})
+}
+
+// templateOf resolves a template ID; "" is no template (the zero Template, which checks nothing).
+func templateOf(id templateID) (notetemplates.Template, error) {
+	if id == "" {
+		return notetemplates.Template{}, nil
+	}
+	if t, ok := notetemplates.ByID(string(id)); ok {
+		return t, nil
+	}
+	return notetemplates.Template{}, fmt.Errorf("unknown template %q; valid: %s", id, strings.Join(notetemplates.IDs(), ", "))
+}
+
+// checked adds the issues of the notebook's template (missing sections, too many pages) to r.
+func checked(nb store.Notebook, bs []model.Block, r *layout.Result) *layout.Result {
+	t, ok := notetemplates.ByID(nb.Template)
+	if !ok {
+		return r
+	}
+	return r.With(t.Check(bs, r.PageCount, r.Page))
 }
 
 func defaultPaper(theme string) string {

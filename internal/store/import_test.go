@@ -11,11 +11,11 @@ func TestImportFrom(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer src.Close()
-	a, _ := src.CreateNotebook(LocalUser, "A", "clean", "plain", "dark", "airy", "")
+	a, _ := src.CreateNotebook(LocalUser, Notebook{Title: "A", Theme: "clean", Paper: "plain", Mode: "dark", Density: "airy", Template: "article"})
 	src.db.Exec(`UPDATE notebooks SET guidelines = 'Short paragraphs.' WHERE id = ?`, a.ID)
 	appendText(t, src, a.ID, "x")
 	appendText(t, src, a.ID, "y", "z")
-	gone, _ := src.CreateNotebook(LocalUser, "Gone", "clean", "plain", "light", "", "")
+	gone, _ := src.CreateNotebook(LocalUser, Notebook{Title: "Gone", Theme: "clean", Paper: "plain", Mode: "light"})
 	src.Delete(LocalUser, gone.ID)
 
 	eachBackend(t, func(t *testing.T, dst *Store) {
@@ -31,7 +31,7 @@ func TestImportFrom(t *testing.T) {
 			t.Fatalf("import: %+v %v", res, err)
 		}
 		got, err := dst.Notebook(LocalUser, a.ID)
-		if err != nil || got.Version != 3 || got.Mode != "dark" || got.Title != "A" || got.Density != "airy" || got.Guidelines != "Short paragraphs." {
+		if err != nil || got.Version != 3 || got.Mode != "dark" || got.Title != "A" || got.Density != "airy" || got.Guidelines != "Short paragraphs." || got.Template != "article" {
 			t.Fatalf("notebook: %+v %v", got, err)
 		}
 		if txt := texts(t, dst, a.ID); txt != "xyz" {

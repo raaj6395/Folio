@@ -87,7 +87,7 @@
     <div class="copy prompt"><code id="pf">Make Folio notes on the key ideas of this topic in my {{.Path}} folder.</code><button class="btn secondary" type="button" data-copy="pf">Copy</button></div>
   </div>{{end}}{{end}}{{end}}
   {{if .HasFolders}}<ul class="results" id="results" hidden>{{range .All}}
-    <li data-title="{{.Title}}"><a href="/n/{{.ID}}">{{.Title}}</a><span class="meta">{{if .Path}}{{.Path}}{{else}}Notebooks{{end}}</span></li>{{end}}
+    <li data-title="{{.Title}}" data-kind="{{.Kind}}"><a href="/n/{{.ID}}">{{.Title}}</a><span class="meta">{{if .Path}}{{.Path}}{{else}}Notebooks{{end}}</span></li>{{end}}
   </ul>{{end}}
   <p class="meta center" id="none" hidden>No notebooks match your search.</p>
 {{else}}
@@ -103,9 +103,9 @@
     </ol>
     <div class="prompts">
       <h3>Try a prompt</h3>
-      <div class="copy prompt"><code id="p1">Use Folio to make study notes on how DNS works, with a diagram.</code><button class="btn secondary" type="button" data-copy="p1">Copy</button></div>
-      <div class="copy prompt"><code id="p2">Make a Folio notebook on Big-O notation with a table of common algorithms.</code><button class="btn secondary" type="button" data-copy="p2">Copy</button></div>
-      <div class="copy prompt"><code id="p3">Create Folio Q&amp;A flashcards on the causes of the French Revolution.</code><button class="btn secondary" type="button" data-copy="p3">Copy</button></div>
+      <div class="copy prompt"><code id="p1">Make Folio notes on LeetCode 3, Longest Substring Without Repeating Characters.</code><button class="btn secondary" type="button" data-copy="p1">Copy</button></div>
+      <div class="copy prompt"><code id="p2">Summarise this article into Folio notes: https://martinfowler.com/articles/microservices.html</code><button class="btn secondary" type="button" data-copy="p2">Copy</button></div>
+      <div class="copy prompt"><code id="p3">Make a one-page Folio cheat sheet on Big-O for my exam tomorrow.</code><button class="btn secondary" type="button" data-copy="p3">Copy</button></div>
     </div>
   </div>
 {{end}}
@@ -291,6 +291,7 @@ function init() {
   const results = document.getElementById("results");
   const sort = document.getElementById("sort");
   const cards = grid ? [...grid.children] : [];
+  const matches = (e, term) => (e.dataset.title + " " + e.dataset.kind).toLowerCase().includes(term);
   q.oninput = () => {
     const term = q.value.trim().toLowerCase();
     let shown = 0;
@@ -299,12 +300,12 @@ function init() {
       main.querySelectorAll("[data-browse]").forEach((e) => (e.hidden = !!term));
       results.hidden = !term;
       [...results.children].forEach((li) => {
-        li.hidden = !li.dataset.title.toLowerCase().includes(term);
+        li.hidden = !matches(li, term);
         shown += !li.hidden;
       });
     } else {
       cards.forEach((c) => {
-        c.hidden = !c.dataset.title.toLowerCase().includes(term);
+        c.hidden = !matches(c, term);
         shown += !c.hidden;
       });
     }
@@ -377,7 +378,7 @@ init();
 </script>
 </body>
 </html>
-{{define "card"}}<article class="nb" data-key="{{.ID}}:{{.Version}}{{if .Favorite}}:f{{end}}"{{if .Movable}} draggable="true" data-drag-nb="{{.ID}}"{{end}} data-title="{{.Title}}" data-updated="{{.UpdatedAt.UTC.Format "2006-01-02T15:04:05Z07:00"}}">
+{{define "card"}}<article class="nb" data-key="{{.ID}}:{{.Version}}{{if .Favorite}}:f{{end}}"{{if .Movable}} draggable="true" data-drag-nb="{{.ID}}"{{end}} data-title="{{.Title}}" data-kind="{{.Kind}}" data-updated="{{.UpdatedAt.UTC.Format "2006-01-02T15:04:05Z07:00"}}">
     <div class="thumb"><img alt="" loading="lazy" draggable="false" data-src="/n/{{.ID}}/thumb.png?v={{.Version}}"></div>
     {{if .Movable}}<input type="checkbox" class="pick" value="{{.ID}}" aria-label="Select {{.Title}}">{{end}}
     <form method="post" action="/n/{{.ID}}/favorite" class="fav">
@@ -386,7 +387,7 @@ init();
     </form>
     <div class="body">
       <a class="t" href="/n/{{.ID}}">{{.Title}}</a>
-      <div class="foot">{{if .Path}}<span class="pill" title="Folder">{{.Path}}</span>{{else}}<span class="pill">{{.Theme}}</span><span class="pill">{{.Mode}}</span>{{end}}<time class="meta" datetime="{{.UpdatedAt.UTC.Format "2006-01-02T15:04:05Z07:00"}}">{{.UpdatedAt.Format "2 Jan 2006"}}</time></div>
+      <div class="foot">{{with .Kind}}<span class="pill" title="Template">{{.}}</span>{{end}}{{if .Path}}<span class="pill" title="Folder">{{.Path}}</span>{{else}}<span class="pill">{{.Theme}}</span><span class="pill">{{.Mode}}</span>{{end}}<time class="meta" datetime="{{.UpdatedAt.UTC.Format "2006-01-02T15:04:05Z07:00"}}">{{.UpdatedAt.Format "2 Jan 2006"}}</time></div>
     </div>
     <details class="menu">
       <summary class="icon-btn" aria-label="Actions for {{.Title}}" title="Actions">⋯</summary>

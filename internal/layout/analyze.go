@@ -324,6 +324,18 @@ func (r *Result) Report() (int, []PageReport) {
 	return (total + len(pages)/2) / len(pages), pages
 }
 
+// With returns a copy of r with extra issues listed first, so they win the hint slots;
+// r itself may be cached and stays untouched. Checks without a penalty don't lower the score.
+func (r *Result) With(extra []Issue) *Result {
+	if len(extra) == 0 {
+		return r
+	}
+	c := *r
+	c.Issues = slices.Concat(extra, r.Issues)
+	c.Warnings = slices.Concat(warningsOf(extra), r.Warnings)
+	return &c
+}
+
 func (r *Result) Hints() []string {
 	var hs []string
 	for _, is := range r.Issues {
