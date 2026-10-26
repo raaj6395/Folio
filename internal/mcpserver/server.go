@@ -237,7 +237,11 @@ func (s *Server) result(ctx context.Context, nb store.Notebook, bs []model.Block
 	if s.firstWrite(userOf(ctx), nb.ID) {
 		res.NotebookGuidelines = nb.Guidelines
 	}
-	r, err := s.lb.Build(ctx, nb, bs)
+	r, err := s.build(ctx, nb, bs)
+	if errors.Is(err, errLayoutPending) {
+		res.Warnings = append(res.Warnings, fmt.Sprintf("saved as version %d, but the server is busy and layout is still being computed; do not repeat this write. Call get_layout_info in a few seconds for page fill and warnings before continuing", nb.Version))
+		return res
+	}
 	if err != nil {
 		res.Warnings = append(res.Warnings, "the change was saved but rendering failed: "+err.Error())
 		return res
@@ -249,6 +253,30 @@ func (s *Server) result(ctx context.Context, nb store.Notebook, bs []model.Block
 		res.Layout.Blocks = append(res.Layout.Blocks, BlockPage{id, r.Page(id), r.Height(id)})
 	}
 	return res
+}
+
+// layoutBudget is how long a call waits for layout before answering without it, kept under
+// the MCP client's own timeout (~30s observed). The build carries on and warms the cache.
+var layoutBudget = 20 * time.Second
+
+var errLayoutPending = errors.New("the server is busy and layout is still being computed; nothing was lost, retry in a few seconds")
+
+func (s *Server) build(ctx context.Context, nb store.Notebook, bs []model.Block) (*layout.Result, error) {
+	type built struct {
+		r   *layout.Result
+		err error
+	}
+	done := make(chan built, 1)
+	go func() {
+		r, err := s.lb.Build(context.WithoutCancel(ctx), nb, bs)
+		done <- built{r, err}
+	}()
+	select {
+	case b := <-done:
+		return b.r, b.err
+	case <-time.After(layoutBudget):
+		return nil, errLayoutPending
+	}
 }
 
 func validTheme(theme string) error {

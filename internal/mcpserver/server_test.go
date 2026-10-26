@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -474,5 +475,26 @@ func TestLayoutRulesDelivered(t *testing.T) {
 	text := g.Content[0].(*mcp.TextContent).Text
 	if !strings.Contains(text, "# Layout rules") || !strings.Contains(text, "Never let a diagram push the rest of its section onto the next page") || strings.Contains(text, "~8 nodes") {
 		t.Fatal("authoring guide must end with the full layout rules and not contradict them")
+	}
+}
+
+func TestSlowLayoutRepliesAfterSave(t *testing.T) {
+	c := newClient(t)
+	var nb NotebookInfo
+	c.call("create_notebook", map[string]any{"title": "Busy"}, &nb)
+
+	old := layoutBudget
+	layoutBudget = time.Nanosecond
+	var res MutationResult
+	c.call("append_blocks", map[string]any{"notebook_id": nb.ID, "blocks": blocksArg(`[{"type":"heading","level":1,"text":"Busy"}]`)}, &res)
+	layoutBudget = old
+	if res.Version != 2 || len(res.ChangedBlockIDs) != 1 || !strings.Contains(strings.Join(res.Warnings, " "), "do not repeat this write") {
+		t.Fatalf("slow write should reply with version, IDs and a pending warning: %+v", res)
+	}
+
+	var info LayoutInfo
+	c.call("get_layout_info", map[string]any{"notebook_id": nb.ID}, &info)
+	if info.Version != 2 || info.PageCount != 1 {
+		t.Fatalf("layout after background build: %+v", info)
 	}
 }

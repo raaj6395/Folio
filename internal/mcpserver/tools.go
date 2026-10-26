@@ -44,7 +44,7 @@ func (s *Server) info(ctx context.Context, nb store.Notebook) (NotebookInfo, err
 		return NotebookInfo{}, err
 	}
 	info := NotebookInfo{ID: nb.ID, Title: nb.Title, Theme: nb.Theme, Paper: nb.Paper, Mode: nb.Mode, Density: nb.Density, Version: nb.Version, BlockCount: len(bs), UpdatedAt: nb.UpdatedAt}
-	if r, err := s.lb.Build(ctx, nb, bs); err == nil {
+	if r := s.lb.Cached(nb); r != nil {
 		info.PageCount = r.PageCount
 	}
 	return info, nil
@@ -246,7 +246,7 @@ func (s *Server) register(m *mcp.Server) {
 			if err != nil {
 				return nil, Outline{}, err
 			}
-			r, err := s.lb.Build(ctx, nb, bs)
+			r, err := s.build(ctx, nb, bs)
 			if err != nil {
 				return nil, Outline{}, err
 			}
@@ -266,7 +266,7 @@ func (s *Server) register(m *mcp.Server) {
 			if err != nil {
 				return nil, LayoutInfo{}, err
 			}
-			r, err := s.lb.Build(ctx, nb, bs)
+			r, err := s.build(ctx, nb, bs)
 			if err != nil {
 				return nil, LayoutInfo{}, err
 			}
@@ -347,7 +347,7 @@ func (s *Server) register(m *mcp.Server) {
 				return nil, ExportOut{}, err
 			}
 			if s.publicURL != "" {
-				if _, err := s.lb.Build(ctx, nb, bs); err != nil {
+				if _, err := s.build(ctx, nb, bs); err != nil {
 					return nil, ExportOut{}, err
 				}
 				return nil, ExportOut{URL: s.publicURL + "/n/" + nb.ID + "/pdf"}, nil
@@ -452,7 +452,7 @@ func (s *Server) register(m *mcp.Server) {
 			if err != nil {
 				return nil, CheckOut{}, err
 			}
-			r, err := s.lb.Build(ctx, nb, bs)
+			r, err := s.build(ctx, nb, bs)
 			if err != nil {
 				return nil, CheckOut{}, err
 			}

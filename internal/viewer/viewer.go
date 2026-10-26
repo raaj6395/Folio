@@ -229,6 +229,7 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	id := r.PathValue("id")
 	last := -1
+	var retryAt time.Time
 	tick := time.NewTicker(500 * time.Millisecond)
 	defer tick.Stop()
 	beat := time.NewTicker(15 * time.Second)
@@ -238,10 +239,12 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintf(w, "event: gone\ndata: {}\n\n")
 			fl.Flush()
 			return
-		} else if nb.Version != last {
+		} else if nb.Version != last && time.Now().After(retryAt) {
 			st, err := s.state(r)
 			if err != nil {
+				// A failed build can hold the shared layout lock for up to 20s; back off instead of retrying every tick.
 				slog.Error("viewer state", "err", err)
+				retryAt = time.Now().Add(10 * time.Second)
 			} else {
 				js, _ := json.Marshal(st)
 				fmt.Fprintf(w, "data: %s\n\n", js)
