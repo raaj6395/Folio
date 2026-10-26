@@ -31,7 +31,7 @@ Notebooks are dark by default; pass mode "light" to create_notebook (or set_them
 Every block has a stable ID (b_xxxxxxxx); use IDs for small targeted edits instead of rewriting.
 Folders: when the user names a folder, course or subject to keep notes in, pass folder to create_notebook (a path like "Semester 1/Networks", at most 3 levels) or use move_notebook. Call list_folders first if unsure and reuse an existing folder; don't invent folders the user didn't ask for.`
 
-const templateRules = `Templates: each kind of note has a blueprint. Pick it from the request without asking, call get_authoring_guide with template=<id>, pass template to create_notebook and write every required section; when adding to a notebook, keep its template (get_outline). Say in one line which template you used; switch if the user asks.
+const templateRules = `Templates: each kind of note has a blueprint. Pick it from the request without asking, call get_authoring_guide with template=<id>, pass template to create_notebook and write every required section; when adding to a notebook, keep its template (get_outline). Switch if the user asks.
 `
 
 const instructionsTail = `Layout rules (full version in get_authoring_guide):
@@ -47,7 +47,7 @@ Workflow:
 1. get_authoring_guide (with template when the note fits one) if you haven't, then create_notebook (or list_notebooks).
 2. Write a whole section per append_blocks call.
 3. Read each write's layout, warnings and layout_hints; fix issues before moving on.
-4. Before saying done: check_layout, fix what it reports, then render_pages once on the changed pages (max 2).
+4. Before saying done: check_layout, fix what it reports, then render_pages once on the changed pages (max 2). In your reply, name the template you used in one line.
 5. The user's notebook_guidelines (get_outline, first write response, get_notebook_guidelines) override these rules; save lasting preferences with set_notebook_guidelines.`
 
 //go:embed guide.md

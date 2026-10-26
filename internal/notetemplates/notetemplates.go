@@ -124,6 +124,7 @@ func (t Template) Guide() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Template: %s (%s)\n", t.Name, t.ID)
 	b.WriteString("The user's notebook_guidelines override this template; the layout rules (get_authoring_guide without template) still apply.\n")
+	b.WriteString("Page counts below are limits, not permission: still run check_layout and fix every warning (a few lines spilling onto a page, an under-filled page).\n")
 	for _, g := range t.Required {
 		fmt.Fprintf(&b, "Required H2 headings: %s. Write them as given (extra words after them are fine); Folio checks them.\n", strings.Join(g, ", "))
 	}

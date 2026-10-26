@@ -5,7 +5,7 @@ use_when: one coding problem (a LeetCode/GFG/Codeforces link or number, "given a
 required: Problem, Approach, Code, Complexity
 density: compact
 ---
-**Unit:** one problem = one H1, titled `<number>. <name>` when it has a number. Aim for 1 page; 2 at most (then put a page_break before "Code"). A notebook can hold many problems, one H1 each.
+**Unit:** one problem = one H1, titled `<number>. <name>` when it has a number. Aim for 1 page. If it needs 2, put a page_break before "Code" so neither page is a sliver. A notebook can hold many problems, one H1 each.
 
 ## Sections
 | # | H2 heading | What goes in it | Blocks |

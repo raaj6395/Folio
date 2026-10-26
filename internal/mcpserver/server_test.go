@@ -461,6 +461,20 @@ func TestGuidelinesDensityAndCheckLayout(t *testing.T) {
 	}
 }
 
+// Every tool's schema rides along in every chat with Folio connected, so growth must be deliberate.
+// Templates took it from 31,875 to 32,837 bytes; raise the budget only on purpose.
+func TestToolListBudget(t *testing.T) {
+	c := newClient(t)
+	tools, err := c.cs.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	js, _ := json.Marshal(tools.Tools)
+	if n := len(js); n > 33_000 {
+		t.Fatalf("tools/list is %d bytes, budget 33,000", n)
+	}
+}
+
 func TestLayoutRulesDelivered(t *testing.T) {
 	c := newClient(t)
 	ins := c.cs.InitializeResult().Instructions
