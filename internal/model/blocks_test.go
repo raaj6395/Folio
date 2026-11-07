@@ -20,6 +20,7 @@ func TestParseValid(t *testing.T) {
 		`{"type":"qa","question":"Q?","answer":"A","hide_answer":true}`,
 		`{"type":"fill_in","prompt":"Explain","lines":3}`,
 		`{"type":"spacer","size":"medium"}`,
+		`{"type":"diagram","source":"a -> b","size":"canvas"}`,
 	} {
 		if _, err := Parse(json.RawMessage(s)); err != nil {
 			t.Errorf("Parse(%s): %v", s, err)
@@ -48,6 +49,7 @@ func TestParseInvalid(t *testing.T) {
 		{`{"type":"qa","question":"q","answer":""}`, `field "answer" is required`},
 		{`{"type":"fill_in","prompt":"p","lines":16}`, "lines must be 1-15, got 16"},
 		{`{"type":"spacer","size":"huge"}`, `size must be "small", "medium" or "large"`},
+		{`{"type":"diagram","source":"` + strings.Repeat("a", 10001) + `"}`, "10001 chars, max 10000; split it into several diagrams or group nodes into containers"},
 	}
 	for _, c := range cases {
 		_, err := Parse(json.RawMessage(c.in))

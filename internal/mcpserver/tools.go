@@ -21,6 +21,9 @@ import (
 
 type empty struct{}
 
+// canvasRenderPx is the long edge of a canvas image sent to Claude (its vision sweet spot).
+const canvasRenderPx = 1568
+
 type notebookIn struct {
 	NotebookID string `json:"notebook_id" jsonschema:"ID of the notebook (n_xxxxxxxx), from list_notebooks or create_notebook"`
 }
@@ -32,6 +35,7 @@ type NotebookInfo struct {
 	Paper      string    `json:"paper"`
 	Mode       string    `json:"mode"`
 	Density    string    `json:"density"`
+	Format     string    `json:"format"`
 	Version    int       `json:"version"`
 	PageCount  int       `json:"page_count"`
 	BlockCount int       `json:"block_count"`
@@ -73,7 +77,7 @@ func (s *Server) infoIn(ctx context.Context, nb store.Notebook, paths map[string
 			return NotebookInfo{}, err
 		}
 	}
-	info := NotebookInfo{ID: nb.ID, Title: nb.Title, Theme: nb.Theme, Paper: nb.Paper, Mode: nb.Mode, Density: nb.Density, Version: nb.Version, BlockCount: len(bs), UpdatedAt: nb.UpdatedAt, Folder: paths[nb.FolderID]}
+	info := NotebookInfo{ID: nb.ID, Title: nb.Title, Theme: nb.Theme, Paper: nb.Paper, Mode: nb.Mode, Density: nb.Density, Format: nb.Format, Version: nb.Version, BlockCount: len(bs), UpdatedAt: nb.UpdatedAt, Folder: paths[nb.FolderID]}
 	if r := s.lb.Cached(nb); r != nil {
 		info.PageCount = r.PageCount
 	}
@@ -87,6 +91,7 @@ type createIn struct {
 	Mode    string `json:"mode,omitempty" jsonschema:"dark (default) or light. Use light only when the user asks for a light/white look or wants to print"`
 	Density string `json:"density,omitempty" jsonschema:"Spacing: compact, comfortable (default) or airy. The renderer adds gaps before headings and around boxes; no spacers needed"`
 	Folder  string `json:"folder,omitempty" jsonschema:"Folder path to file the notebook in, e.g. Semester 1/Networks (at most 3 levels). Missing folders are created; matching ignores case. Omit for the top level"`
+	Format  string `json:"format,omitempty" jsonschema:"a4 (default): printable study pages. canvas: one unbounded sheet for flowcharts, architecture maps and mind maps; diagrams keep their natural size"`
 }
 
 type listIn struct {
@@ -124,6 +129,7 @@ type Outline struct {
 	Theme      string         `json:"theme"`
 	Mode       string         `json:"mode"`
 	Density    string         `json:"density"`
+	Format     string         `json:"format"`
 	PageCount  int            `json:"page_count"`
 	Guidelines string         `json:"notebook_guidelines,omitempty"`
 	Blocks     []OutlineEntry `json:"blocks"`
@@ -155,8 +161,9 @@ type CheckOut struct {
 
 type renderIn struct {
 	NotebookID string `json:"notebook_id" jsonschema:"ID of the notebook"`
-	Pages      []int  `json:"pages" jsonschema:"1-indexed page numbers to render, max 4 per call"`
-	PPI        int    `json:"ppi,omitempty" jsonschema:"Resolution in pixels per inch; default 80 (enough to judge layout), max 150"`
+	Pages      []int  `json:"pages,omitempty" jsonschema:"1-indexed page numbers to render, max 4 per call. A canvas has one page: [1], an overview of the whole canvas"`
+	Tiles      []int  `json:"tiles,omitempty" jsonschema:"Canvas only: zoom in on up to 4 tiles at readable size instead of the overview. Tiles are numbered row by row from the top left; the overview says how many there are"`
+	PPI        int    `json:"ppi,omitempty" jsonschema:"Resolution in pixels per inch; default 80 (enough to judge layout), max 150. A canvas is scaled down to fit 1568 px"`
 }
 
 type exportIn struct {
@@ -175,14 +182,15 @@ type LayoutInfo struct {
 type previewIn struct {
 	Source string `json:"source" jsonschema:"D2 diagram source"`
 	Theme  string `json:"theme,omitempty" jsonschema:"Theme whose diagram style to use; default clean"`
-	Size   string `json:"size,omitempty" jsonschema:"full, half or small (default full); affects the reported on-page size"`
+	Size   string `json:"size,omitempty" jsonschema:"full, half or small (default full); affects the reported on-page size. canvas = natural size on a canvas"`
 	Mode   string `json:"mode,omitempty" jsonschema:"dark (default) or light, to match the notebook"`
 }
 
 type ThemesOut struct {
-	Themes []layout.Theme `json:"themes"`
-	Papers []string       `json:"papers"`
-	Modes  []string       `json:"modes"`
+	Themes  []layout.Theme `json:"themes"`
+	Papers  []string       `json:"papers"`
+	Modes   []string       `json:"modes"`
+	Formats []string       `json:"formats"`
 }
 
 type setThemeIn struct {
@@ -191,6 +199,7 @@ type setThemeIn struct {
 	Paper           string `json:"paper,omitempty" jsonschema:"plain, ruled, dotted or grid; default: the theme's paper"`
 	Mode            string `json:"mode,omitempty" jsonschema:"dark or light; omit to keep the current mode"`
 	Density         string `json:"density,omitempty" jsonschema:"compact, comfortable or airy; omit to keep the current spacing"`
+	Format          string `json:"format,omitempty" jsonschema:"a4 or canvas; omit to keep the current format. Blocks stay the same, only the layout changes"`
 	ExpectedVersion *int   `json:"expected_version,omitempty" jsonschema:"Reject unless the notebook is at this version"`
 }
 
@@ -284,8 +293,14 @@ func (s *Server) register(m *mcp.Server) {
 			if err := validTheme(in.Theme); err != nil {
 				return nil, NotebookInfo{}, err
 			}
+			if in.Format == "" {
+				in.Format = "a4"
+			}
+			if err := validFormat(in.Format); err != nil {
+				return nil, NotebookInfo{}, err
+			}
 			if in.Paper == "" {
-				in.Paper = defaultPaper(in.Theme)
+				in.Paper = defaultPaper(in.Theme, in.Format)
 			}
 			if err := validPaper(in.Paper); err != nil {
 				return nil, NotebookInfo{}, err
@@ -306,7 +321,7 @@ func (s *Server) register(m *mcp.Server) {
 			if err != nil {
 				return nil, NotebookInfo{}, err
 			}
-			nb, err := s.st.CreateNotebook(userOf(ctx), in.Title, in.Theme, in.Paper, in.Mode, in.Density, folder.ID)
+			nb, err := s.st.CreateNotebook(userOf(ctx), in.Title, in.Theme, in.Paper, in.Mode, in.Density, folder.ID, in.Format)
 			if err != nil {
 				return nil, NotebookInfo{}, err
 			}
@@ -338,7 +353,7 @@ func (s *Server) register(m *mcp.Server) {
 			if err != nil {
 				return nil, Outline{}, err
 			}
-			out := Outline{NotebookID: nb.ID, Title: nb.Title, Version: nb.Version, Theme: nb.Theme, Mode: nb.Mode, Density: nb.Density, PageCount: r.PageCount, Guidelines: nb.Guidelines, Blocks: []OutlineEntry{}}
+			out := Outline{NotebookID: nb.ID, Title: nb.Title, Version: nb.Version, Theme: nb.Theme, Mode: nb.Mode, Density: nb.Density, Format: nb.Format, PageCount: r.PageCount, Guidelines: nb.Guidelines, Blocks: []OutlineEntry{}}
 			for _, b := range bs {
 				out.Blocks = append(out.Blocks, OutlineEntry{ID: b.ID, Type: b.Type, Page: r.Page(b.ID), Summary: b.Summary()})
 				for _, k := range b.Children() {
@@ -366,8 +381,15 @@ func (s *Server) register(m *mcp.Server) {
 			if err := s.allowRender(ctx); err != nil {
 				return nil, nil, err
 			}
+			if len(in.Tiles) > 0 {
+				return s.renderTiles(ctx, in)
+			}
 			if len(in.Pages) == 0 || len(in.Pages) > 4 {
 				return nil, nil, fmt.Errorf("pages must list 1 to 4 page numbers, got %d", len(in.Pages))
+			}
+			canvasPPI := 150 // a canvas defaults higher: it is scaled down to fit canvasRenderPx anyway
+			if in.PPI != 0 {
+				canvasPPI = in.PPI
 			}
 			if in.PPI == 0 {
 				in.PPI = 80
@@ -379,13 +401,29 @@ func (s *Server) register(m *mcp.Server) {
 			if err != nil {
 				return nil, nil, err
 			}
-			pngs, err := s.lb.RenderPNG(ctx, nb, bs, in.Pages, in.PPI)
+			ppi, label := in.PPI, fmt.Sprintf("version %d", nb.Version)
+			if nb.Format == "canvas" {
+				if len(in.Pages) != 1 || in.Pages[0] != 1 {
+					return nil, nil, fmt.Errorf("a canvas has a single page: pass pages [1]")
+				}
+				r, err := s.build(ctx, nb, bs)
+				if err != nil {
+					return nil, nil, err
+				}
+				ppi = r.CanvasPPI(canvasPPI, canvasRenderPx)
+				label = fmt.Sprintf("canvas %.0f×%.0f mm at %d ppi, version %d", r.CanvasWMM, r.CanvasHMM, ppi, nb.Version)
+				// Below ~90 ppi labels get hard to read: offer tiles (100 ppi) to zoom in.
+				if cols, rows := r.TileGrid(); ppi < 90 && cols*rows > 1 {
+					label += fmt.Sprintf(". Too small to read details: zoom in with tiles 1-%d (%d across, %d down, numbered row by row from the top left)", cols*rows, cols, rows)
+				}
+			}
+			pngs, err := s.lb.RenderPNG(ctx, nb, bs, in.Pages, ppi)
 			if err != nil {
 				return nil, nil, err
 			}
 			res := &mcp.CallToolResult{}
 			for i, png := range pngs {
-				res.Content = append(res.Content, &mcp.TextContent{Text: fmt.Sprintf("Page %d (version %d):", in.Pages[i], nb.Version)}, &mcp.ImageContent{Data: png, MIMEType: "image/png"})
+				res.Content = append(res.Content, &mcp.TextContent{Text: fmt.Sprintf("Page %d (%s):", in.Pages[i], label)}, &mcp.ImageContent{Data: png, MIMEType: "image/png"})
 			}
 			return res, nil, nil
 		})
@@ -405,8 +443,8 @@ func (s *Server) register(m *mcp.Server) {
 			if in.Size == "" {
 				in.Size = "full"
 			}
-			if in.Size != "full" && in.Size != "half" && in.Size != "small" {
-				return nil, nil, fmt.Errorf(`size must be "full", "half" or "small", got %q`, in.Size)
+			if in.Size != "full" && in.Size != "half" && in.Size != "small" && in.Size != "canvas" {
+				return nil, nil, fmt.Errorf(`size must be "full", "half", "small" or "canvas", got %q`, in.Size)
 			}
 			if in.Mode == "" {
 				in.Mode = "dark"
@@ -481,19 +519,23 @@ func (s *Server) register(m *mcp.Server) {
 
 	addTool(s, m, "list_themes", "List available themes and paper backgrounds.",
 		func(ctx context.Context, _ *mcp.CallToolRequest, _ empty) (*mcp.CallToolResult, ThemesOut, error) {
-			return nil, ThemesOut{Themes: layout.Themes, Papers: papers, Modes: layout.Modes}, nil
+			return nil, ThemesOut{Themes: layout.Themes, Papers: papers, Modes: layout.Modes, Formats: store.Formats}, nil
 		})
 
-	addTool(s, m, "set_theme", "Change a notebook's theme, paper, mode (dark or light) and/or density (spacing). If paper is omitted, the theme's default paper is used; mode and density stay as they are unless given. To only switch dark/light or density, pass the current theme too.",
+	addTool(s, m, "set_theme", "Change a notebook's theme, paper, mode (dark or light), density (spacing) and/or format (a4 pages or one canvas). If paper is omitted, the default paper is used (dotted on a canvas, otherwise the theme's); mode, density and format stay as they are unless given. To only switch dark/light, density or format, pass the current theme too.",
 		func(ctx context.Context, _ *mcp.CallToolRequest, in setThemeIn) (*mcp.CallToolResult, MutationResult, error) {
 			if err := validTheme(in.Theme); err != nil {
 				return nil, MutationResult{}, err
 			}
-			if in.Paper == "" {
-				in.Paper = defaultPaper(in.Theme)
+			if in.Paper != "" {
+				if err := validPaper(in.Paper); err != nil {
+					return nil, MutationResult{}, err
+				}
 			}
-			if err := validPaper(in.Paper); err != nil {
-				return nil, MutationResult{}, err
+			if in.Format != "" {
+				if err := validFormat(in.Format); err != nil {
+					return nil, MutationResult{}, err
+				}
 			}
 			if in.Mode != "" {
 				if err := validMode(in.Mode); err != nil {
@@ -505,8 +547,14 @@ func (s *Server) register(m *mcp.Server) {
 					return nil, MutationResult{}, err
 				}
 			}
-			res, err := s.mutate(ctx, in.NotebookID, in.ExpectedVersion, "set_theme", fmt.Sprintf("theme %s, paper %s, mode %s, density %s", in.Theme, in.Paper, in.Mode, in.Density),
+			res, err := s.mutate(ctx, in.NotebookID, in.ExpectedVersion, "set_theme", fmt.Sprintf("theme %s, paper %s, mode %s, density %s, format %s", in.Theme, in.Paper, in.Mode, in.Density, in.Format),
 				func(nb *store.Notebook, bs []model.Block) ([]model.Block, []string, error) {
+					if in.Format != "" {
+						nb.Format = in.Format
+					}
+					if in.Paper == "" {
+						in.Paper = defaultPaper(in.Theme, nb.Format)
+					}
 					nb.Theme, nb.Paper = in.Theme, in.Paper
 					if in.Mode != "" {
 						nb.Mode = in.Mode
@@ -592,7 +640,30 @@ func (s *Server) register(m *mcp.Server) {
 		})
 }
 
-func defaultPaper(theme string) string {
+// defaultPaper: a canvas defaults to dotted paper (a whiteboard feel), pages to the theme's own paper.
+func (s *Server) renderTiles(ctx context.Context, in renderIn) (*mcp.CallToolResult, any, error) {
+	if len(in.Tiles) > 4 {
+		return nil, nil, fmt.Errorf("tiles must list 1 to 4 tile numbers, got %d", len(in.Tiles))
+	}
+	nb, bs, err := s.load(ctx, in.NotebookID)
+	if err != nil {
+		return nil, nil, err
+	}
+	pngs, err := s.lb.RenderTiles(ctx, nb, bs, in.Tiles)
+	if err != nil {
+		return nil, nil, err
+	}
+	res := &mcp.CallToolResult{}
+	for i, png := range pngs {
+		res.Content = append(res.Content, &mcp.TextContent{Text: fmt.Sprintf("Tile %d (version %d, %d ppi):", in.Tiles[i], nb.Version, layout.TilePPI)}, &mcp.ImageContent{Data: png, MIMEType: "image/png"})
+	}
+	return res, nil, nil
+}
+
+func defaultPaper(theme, format string) string {
+	if format == "canvas" {
+		return "dotted"
+	}
 	th, _ := layout.ThemeByName(theme)
 	return th.Paper
 }

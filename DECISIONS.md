@@ -206,3 +206,21 @@
 - **Why:** the Claude app's custom connector dialog only does OAuth (no token field), and the user wants name + URL + sign-in.
 - **Alternatives considered:** a token in the URL (rejected: the spec forbids it); `static_headers` (beta, organization-wide, can't identify the individual user).
 - **Affects interface/behaviour?** yes — **User approved?** yes (user asked to implement the auth flow properly, 2026-10-22)
+
+## 2026-11-07 — Canvas format (CANVAS_PLAN.md, C1)
+- **Decision:**
+  - A notebook has a `format`: `a4` (default) or `canvas`. It is stored on `notebooks` and in `snapshots` (so switching is undoable); SQLite migration 8, Postgres migration 7. A NULL snapshot format restores as `a4`, because every snapshot taken before formats existed was A4 (unlike `density`, which keeps the current value).
+  - A canvas is one auto-height Typst page. Go sets its width (24 mm + max(174 mm, widest top-level diagram) + 24 mm) and the template gives text a wide right margin, so text keeps the A4 column and wider diagrams extend into it. Top-level diagrams use their natural size (`Fit` size `"canvas"`: natural × 0.9, no column or height cap). `page_break` renders nothing on a canvas and is reported as `page_break_ignored`; A4 page checks are skipped; `canvas_too_large` warns past 5,000 mm.
+  - Canvas outputs: SVG (`/n/{id}/canvas.svg`, the viewer's image and the SVG download, with its own strict CSP), PNG capped by pixels (1568 px for `render_pages` and the viewer page route, 600 px for thumbnails), and a single-page PDF.
+  - The viewer opens canvases in `canvas.html`: pan/zoom with pointer events, zooming by `width` (not `transform: scale`) so the SVG stays sharp. No library.
+  - Diagram `source` is capped at 10,000 characters for both formats (it was unbounded).
+  - `diagram.retarget` keeps D2's embedded subset fonts. Text rules become `font-family: "d2-…-font-bold", "<theme font>"`, and faces declare their weight/style. Browsers rendering a canvas SVG use the embedded font; Typst ignores `@font-face` and falls back to the theme font as before. `renderVersion` is now r4.
+- **Why:** big flowcharts and maps were shrunk unreadably by the A4 column and height caps. A format reuses storage, versions, block tools, themes, the isolation checks and exports, and costs one column.
+- **Alternatives considered:** a separate canvas product (duplicates everything); free x/y placement (LLMs place coordinates poorly, and it breaks "never think in coordinates"); wrapping each canvas block in a 174 mm block (drops the blocks' `above` spacing, measured 30 mm → 5 mm); `measure()` for the canvas size (unneeded once Go sets the width); PNG in the viewer (blurs when zoomed).
+- **Affects interface/behaviour?** yes (new `format` on create_notebook/set_theme, `canvas_mm` in results, new route and viewer page, diagram source cap) — **User approved?** yes (user asked to implement CANVAS_PLAN.md with its recommended defaults, 2026-11-07)
+
+## 2026-11-07 — Canvas zoom for Claude: tiles, not a region
+- **Decision:** `render_pages` on a canvas takes `tiles` (up to 4). The canvas is cut into 390×260 mm tiles (1536×1024 px at 100 ppi), numbered row by row from the top left; the overview image's caption says how many there are. Each tile is rendered by placing the canvas's SVG export, shifted, on a tile-sized Typst page, so a canvas is never rasterised whole at full resolution.
+- **Why:** at 1568 px a 1 m canvas is ~36 ppi and its labels are unreadable to Claude. Tile numbers keep the "never think in coordinates" contract that a mm `region` would break, and memory stays bounded on small instances.
+- **Alternatives considered:** a `region` in mm (coordinates); rendering the whole canvas at 100 ppi and cropping in Go (a 5 m canvas would be ~400 MP); one tile per block (a single big diagram would still be unreadable).
+- **Affects interface/behaviour?** yes (new optional `tiles` on render_pages; `pages` is now optional in the schema) — **User approved?** yes (asked to complete the plan, 2026-11-07)

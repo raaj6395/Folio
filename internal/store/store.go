@@ -125,6 +125,8 @@ var pgMigrations = []string{
 	CREATE INDEX notebooks_folder ON notebooks(user_id, folder_id)`,
 	`ALTER TABLE folders ADD COLUMN color TEXT NOT NULL DEFAULT '';
 	ALTER TABLE notebooks ADD COLUMN favorite_at TEXT`,
+	`ALTER TABLE notebooks ADD COLUMN format TEXT NOT NULL DEFAULT 'a4';
+	ALTER TABLE snapshots ADD COLUMN format TEXT`,
 }
 
 var migrations = []string{
@@ -237,6 +239,8 @@ var migrations = []string{
 	CREATE INDEX notebooks_folder ON notebooks(user_id, folder_id)`,
 	`ALTER TABLE folders ADD COLUMN color TEXT NOT NULL DEFAULT '';
 	ALTER TABLE notebooks ADD COLUMN favorite_at TEXT`,
+	`ALTER TABLE notebooks ADD COLUMN format TEXT NOT NULL DEFAULT 'a4';
+	ALTER TABLE snapshots ADD COLUMN format TEXT`,
 }
 
 const LocalUser = "u_local"
@@ -274,6 +278,7 @@ type Notebook struct {
 	Guidelines string    `json:"-"`
 	FolderID   string    `json:"-"`
 	Favorite   bool      `json:"-"`
+	Format     string    `json:"format"`
 }
 
 const (
@@ -282,6 +287,9 @@ const (
 )
 
 var Densities = []string{"compact", "comfortable", "airy"}
+
+// Formats: a4 pages, or one canvas sheet that grows to fit its content.
+var Formats = []string{"a4", "canvas"}
 
 type Snapshot struct {
 	Version   int       `json:"version"`
@@ -409,7 +417,7 @@ func scanNotebook(r scanner) (Notebook, error) {
 	var nb Notebook
 	var c, u string
 	var owner, folder, fav sql.NullString
-	err := r.Scan(&nb.ID, &nb.Title, &nb.Theme, &nb.Paper, &c, &u, &nb.Version, &nb.Mode, &owner, &nb.Guidelines, &nb.Density, &folder, &fav)
+	err := r.Scan(&nb.ID, &nb.Title, &nb.Theme, &nb.Paper, &c, &u, &nb.Version, &nb.Mode, &owner, &nb.Guidelines, &nb.Density, &folder, &fav, &nb.Format)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nb, ErrNotFound
 	}
@@ -417,15 +425,19 @@ func scanNotebook(r scanner) (Notebook, error) {
 	return nb, err
 }
 
-const nbCols = `id, title, theme, paper, created_at, updated_at, version, mode, user_id, guidelines, density, folder_id, favorite_at`
+const nbCols = `id, title, theme, paper, created_at, updated_at, version, mode, user_id, guidelines, density, folder_id, favorite_at, format`
 
 // CreateNotebook makes an empty notebook in folderID ("" = top level).
-func (s *Store) CreateNotebook(userID, title, theme, paper, mode, density, folderID string) (Notebook, error) {
+// format "" means a4.
+func (s *Store) CreateNotebook(userID, title, theme, paper, mode, density, folderID, format string) (Notebook, error) {
 	now := time.Now()
 	if density == "" {
 		density = DefaultDensity
 	}
-	nb := Notebook{ID: model.NewID("n_"), Title: title, Theme: theme, Paper: paper, Mode: mode, CreatedAt: now, UpdatedAt: now, Version: 1, UserID: userID, Density: density, FolderID: folderID}
+	if format == "" {
+		format = "a4"
+	}
+	nb := Notebook{ID: model.NewID("n_"), Title: title, Theme: theme, Paper: paper, Mode: mode, CreatedAt: now, UpdatedAt: now, Version: 1, UserID: userID, Density: density, FolderID: folderID, Format: format}
 	if userID == "" {
 		return nb, errors.New("internal error: notebook without an owner")
 	}
@@ -451,7 +463,7 @@ func (s *Store) CreateNotebook(userID, title, theme, paper, mode, density, folde
 		}
 	}
 	folder := sql.NullString{String: folderID, Valid: folderID != ""}
-	if _, err := tx.Exec(s.q(`INSERT INTO notebooks (`+nbCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,NULL)`), nb.ID, title, theme, paper, ts(now), ts(now), 1, mode, userID, "", density, folder); err != nil {
+	if _, err := tx.Exec(s.q(`INSERT INTO notebooks (`+nbCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,NULL,?)`), nb.ID, title, theme, paper, ts(now), ts(now), 1, mode, userID, "", density, folder, format); err != nil {
 		return nb, err
 	}
 	if err := s.snapshot(tx, nb, nil, 1, "create_notebook", "created notebook"); err != nil {
@@ -573,7 +585,7 @@ func (s *Store) mutate(userID, id string, expected *int, tool, summary string, b
 	}
 	nb.Version++
 	nb.UpdatedAt = now
-	if _, err := tx.Exec(s.q(`UPDATE notebooks SET title = ?, theme = ?, paper = ?, mode = ?, guidelines = ?, density = ?, updated_at = ?, version = ? WHERE id = ?`), nb.Title, nb.Theme, nb.Paper, nb.Mode, nb.Guidelines, nb.Density, ts(now), nb.Version, id); err != nil {
+	if _, err := tx.Exec(s.q(`UPDATE notebooks SET title = ?, theme = ?, paper = ?, mode = ?, guidelines = ?, density = ?, format = ?, updated_at = ?, version = ? WHERE id = ?`), nb.Title, nb.Theme, nb.Paper, nb.Mode, nb.Guidelines, nb.Density, nb.Format, ts(now), nb.Version, id); err != nil {
 		return nb, nil, err
 	}
 	if base == 0 {
@@ -634,8 +646,8 @@ func (s *Store) snapshot(tx *sql.Tx, nb Notebook, bs []model.Block, base int, to
 		sb = append(sb, snapBlock{b.ID, b.Type, b.Position, b.Data})
 	}
 	js, _ := json.Marshal(sb)
-	if _, err := tx.Exec(s.q(`INSERT INTO snapshots (notebook_id, version, base, blocks, theme, paper, mode, guidelines, density, tool_name, summary, timestamp) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`),
-		nb.ID, nb.Version, base, string(js), nb.Theme, nb.Paper, nb.Mode, nb.Guidelines, nb.Density, tool, summary, ts(time.Now())); err != nil {
+	if _, err := tx.Exec(s.q(`INSERT INTO snapshots (notebook_id, version, base, blocks, theme, paper, mode, guidelines, density, format, tool_name, summary, timestamp) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`),
+		nb.ID, nb.Version, base, string(js), nb.Theme, nb.Paper, nb.Mode, nb.Guidelines, nb.Density, nb.Format, tool, summary, ts(time.Now())); err != nil {
 		return err
 	}
 	_, err := tx.Exec(s.q(`DELETE FROM snapshots WHERE notebook_id = ? AND version <= ?`), nb.ID, nb.Version-keepSnapshots)
@@ -673,9 +685,9 @@ func (s *Store) restore(userID, id string, version int, expected *int, tool stri
 		return Notebook{}, nil, err
 	}
 	var js, theme, paper, mode string
-	var guidelines, density sql.NullString
+	var guidelines, density, format sql.NullString
 	var base int
-	err := s.db.QueryRow(s.q(`SELECT blocks, theme, paper, mode, guidelines, density, base FROM snapshots WHERE notebook_id = ? AND version = ?`), id, version).Scan(&js, &theme, &paper, &mode, &guidelines, &density, &base)
+	err := s.db.QueryRow(s.q(`SELECT blocks, theme, paper, mode, guidelines, density, format, base FROM snapshots WHERE notebook_id = ? AND version = ?`), id, version).Scan(&js, &theme, &paper, &mode, &guidelines, &density, &format, &base)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Notebook{}, nil, fmt.Errorf("%w: version %d of notebook %s (only the last %d versions are kept; see list_versions)", ErrNotFound, version, id, keepSnapshots)
 	}
@@ -698,6 +710,11 @@ func (s *Store) restore(userID, id string, version int, expected *int, tool stri
 		}
 		if density.Valid {
 			nb.Density = density.String
+		}
+		// Snapshots from before formats existed are all A4.
+		nb.Format = "a4"
+		if format.Valid {
+			nb.Format = format.String
 		}
 		return restored, nil
 	})

@@ -498,3 +498,63 @@ func TestSlowLayoutRepliesAfterSave(t *testing.T) {
 		t.Fatalf("layout after background build: %+v", info)
 	}
 }
+
+func TestCanvas(t *testing.T) {
+	c := newClient(t)
+	if e := c.callErr("create_notebook", map[string]any{"title": "x", "format": "poster"}); !strings.Contains(e, `unknown format "poster"; valid: a4, canvas`) {
+		t.Fatal(e)
+	}
+	var nb NotebookInfo
+	c.call("create_notebook", map[string]any{"title": "Checkout flow", "format": "canvas"}, &nb)
+	if nb.Format != "canvas" || nb.Paper != "dotted" {
+		t.Fatalf("a new canvas defaults to dotted paper: %+v", nb)
+	}
+	var res MutationResult
+	c.call("append_blocks", map[string]any{"notebook_id": nb.ID, "blocks": blocksArg(`[
+		{"type":"heading","level":1,"text":"Checkout"},
+		{"type":"diagram","source":"direction: right\ncart -> address -> shipping -> payment -> fraud -> capture -> receipt -> email -> done"}]`)}, &res)
+	if len(res.Layout.CanvasMM) != 2 || res.Layout.CanvasMM[0] <= 222 || res.Layout.PageCount != 1 || len(res.Warnings) != 0 {
+		t.Fatalf("canvas write result: %+v", res)
+	}
+	if len(res.LayoutHints) != 1 || !strings.Contains(res.LayoutHints[0], "render_pages tiles") {
+		t.Fatalf("a canvas too big to read in one image must suggest tiles: %v", res.LayoutHints)
+	}
+	if e := c.callErr("render_pages", map[string]any{"notebook_id": nb.ID, "pages": []int{2}}); !strings.Contains(e, "pass pages [1]") {
+		t.Fatal(e)
+	}
+	img := c.raw("render_pages", map[string]any{"notebook_id": nb.ID, "pages": []int{1}})
+	if img.IsError || !strings.Contains(img.Content[0].(*mcp.TextContent).Text, "canvas ") {
+		t.Fatalf("render canvas: %+v", img.Content[0])
+	}
+	if !strings.Contains(img.Content[0].(*mcp.TextContent).Text, "zoom in with tiles 1-") {
+		t.Fatalf("the overview must offer tiles: %s", img.Content[0].(*mcp.TextContent).Text)
+	}
+	tile := c.raw("render_pages", map[string]any{"notebook_id": nb.ID, "tiles": []int{1}})
+	if tile.IsError || len(tile.Content) != 2 || !strings.HasPrefix(tile.Content[0].(*mcp.TextContent).Text, "Tile 1") {
+		t.Fatalf("render tile: %+v", tile.Content[0])
+	}
+	if pre := c.raw("preview_diagram", map[string]any{"source": "a -> b", "size": "canvas"}); pre.IsError {
+		t.Fatal("preview_diagram size canvas")
+	}
+
+	var themes ThemesOut
+	c.call("list_themes", map[string]any{}, &themes)
+	if strings.Join(themes.Formats, ",") != "a4,canvas" {
+		t.Fatalf("formats: %v", themes.Formats)
+	}
+	var onA4 MutationResult
+	c.call("set_theme", map[string]any{"notebook_id": nb.ID, "theme": "clean", "format": "a4"}, &onA4)
+	if len(onA4.Layout.CanvasMM) != 0 || !strings.Contains(strings.Join(onA4.Warnings, " "), "unreadable") {
+		t.Fatalf("on A4 the wide diagram is shrunk and flagged: %+v", onA4)
+	}
+	var out Outline
+	c.call("get_outline", map[string]any{"notebook_id": nb.ID}, &out)
+	if out.Format != "a4" {
+		t.Fatalf("outline format: %q", out.Format)
+	}
+	c.call("undo", map[string]any{"notebook_id": nb.ID}, nil)
+	c.call("get_outline", map[string]any{"notebook_id": nb.ID}, &out)
+	if out.Format != "canvas" {
+		t.Fatalf("undo must switch back to the canvas: %q", out.Format)
+	}
+}

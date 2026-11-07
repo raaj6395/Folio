@@ -34,7 +34,7 @@ func TestFolderViews(t *testing.T) {
 		return resp
 	}
 
-	loose, _ := st.CreateNotebook(store.LocalUser, "Loose notes", "clean", "plain", "dark", "", "")
+	loose, _ := st.CreateNotebook(store.LocalUser, "Loose notes", "clean", "plain", "dark", "", "", "")
 	if body := get(t, srv.URL+"/"); strings.Contains(body, "<h2>Recent</h2>") || strings.Contains(body, "data-move=") {
 		t.Error("without folders the dashboard must look as before")
 	}
@@ -105,8 +105,8 @@ func TestFolderViews(t *testing.T) {
 	if resp := post("/f/"+sem.ID+"/move", url.Values{"parent_id": {arch.ID}}); resp.StatusCode != 400 {
 		t.Errorf("folder into its own child: %d", resp.StatusCode)
 	}
-	n1, _ := st.CreateNotebook(store.LocalUser, "One", "clean", "plain", "dark", "", "")
-	n2, _ := st.CreateNotebook(store.LocalUser, "Two", "clean", "plain", "dark", "", "")
+	n1, _ := st.CreateNotebook(store.LocalUser, "One", "clean", "plain", "dark", "", "", "")
+	n2, _ := st.CreateNotebook(store.LocalUser, "Two", "clean", "plain", "dark", "", "", "")
 	post("/notebooks/move", url.Values{"id": {n1.ID, n2.ID}, "folder_id": {arch.ID}})
 	for _, id := range []string{n1.ID, n2.ID} {
 		if n, _ := st.Notebook(store.LocalUser, id); n.FolderID != arch.ID {

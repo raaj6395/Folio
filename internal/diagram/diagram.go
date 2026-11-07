@@ -82,22 +82,32 @@ var canvas = regexp.MustCompile(`<rect x="[-\d.]+" y="[-\d.]+" width="[\d.]+" he
 
 var (
 	fontFace   = regexp.MustCompile(`@font-face\s*\{[^}]*\}`)
-	d2Family   = regexp.MustCompile(`font-family:\s*"?d2-\d+-font-(\w+)"?`)
+	faceFamily = regexp.MustCompile(`font-family:\s*d2-\d+-font-(\w+);`)
+	d2Family   = regexp.MustCompile(`font-family:\s*"(d2-\d+-font-(\w+))"`)
 	styleStart = []byte("<![CDATA[")
 )
 
+// retarget makes diagram text use the theme font in both renderers.
+// Typst ignores @font-face, so each rule falls back from D2's embedded subset font to the theme font, which Typst has.
+// Browsers (a canvas SVG embeds this SVG as an image) have no theme font, so they use the embedded subset.
+// The faces get their weight/style so browsers don't fake bold on an already bold face.
 func retarget(svg []byte, font string) []byte {
 	if font == "" {
 		return svg
 	}
-	svg = fontFace.ReplaceAll(svg, nil)
+	svg = fontFace.ReplaceAllFunc(svg, func(face []byte) []byte {
+		return faceFamily.ReplaceAllFunc(face, func(m []byte) []byte {
+			if v := variant(faceFamily.FindSubmatch(m)[1]); v != "" {
+				return []byte(string(m) + " " + v + ";")
+			}
+			return m
+		})
+	})
 	svg = d2Family.ReplaceAllFunc(svg, func(m []byte) []byte {
-		decl := fmt.Sprintf(`font-family: "%s"`, font)
-		switch d2Family.FindSubmatch(m)[1][0] {
-		case 'b':
-			decl += "; font-weight: bold"
-		case 'i':
-			decl += "; font-style: italic"
+		sub := d2Family.FindSubmatch(m)
+		decl := fmt.Sprintf(`font-family: "%s", "%s"`, sub[1], font)
+		if v := variant(sub[2]); v != "" {
+			decl += "; " + v
 		}
 		return []byte(decl)
 	})
@@ -106,6 +116,17 @@ func retarget(svg []byte, font string) []byte {
 		svg = append(svg[:i:i], append([]byte(fmt.Sprintf(`text{font-family:"%s";}`, font)), svg[i:]...)...)
 	}
 	return svg
+}
+
+// variant is the CSS for a D2 font kind ("regular", "bold", "italic", "semibold").
+func variant(kind []byte) string {
+	switch kind[0] {
+	case 'b':
+		return "font-weight: bold"
+	case 'i':
+		return "font-style: italic"
+	}
+	return ""
 }
 
 var families = map[string]*d2fonts.FontFamily{}
@@ -147,7 +168,7 @@ func size(svg []byte) (float64, float64) {
 }
 
 func Key(src string, st Style) string {
-	sum := sha256.Sum256([]byte(fmt.Sprintf("r3|%d|%t|%s|%s", st.ThemeID, st.Sketch, st.Font, src)))
+	sum := sha256.Sum256([]byte(fmt.Sprintf("r4|%d|%t|%s|%s", st.ThemeID, st.Sketch, st.Font, src)))
 	return hex.EncodeToString(sum[:8])
 }
 

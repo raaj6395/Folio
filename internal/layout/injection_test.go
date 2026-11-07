@@ -13,7 +13,11 @@ import (
 
 const nasty = `#import "@preview/x:0.1.0": * #eval("1+1") $x^2$ [content] \ <label> @ref #set page(fill: red) */ // ] ) } "quote" ` + "`raw`" + ` ** == [link](javascript:alert(1)) [l](#eval("x"))`
 
-func TestInjectionRendersLiterally(t *testing.T) {
+func TestInjectionRendersLiterally(t *testing.T) { injection(t, "a4") }
+
+func TestInjectionRendersLiterallyOnCanvas(t *testing.T) { injection(t, "canvas") }
+
+func injection(t *testing.T, format string) {
 	b := builder(t)
 	s, _ := json.Marshal(nasty)
 	bs := blocks(t,
@@ -23,7 +27,7 @@ func TestInjectionRendersLiterally(t *testing.T) {
 		`{"type":"callout","variant":"note","title":`+string(s)+`,"body":[`+string(s)+`]}`,
 		`{"type":"code","language":"#eval(\"x\")","code":`+string(s)+`,"caption":`+string(s)+`}`,
 	)
-	nb := store.Notebook{ID: "n_inject", Title: nasty, Theme: "clean", Paper: "plain", Version: 1}
+	nb := store.Notebook{ID: "n_inject_" + format, Title: nasty, Theme: "clean", Paper: "plain", Format: format, Version: 1}
 	r, err := b.Build(context.Background(), nb, bs)
 	if err != nil {
 		t.Fatal(err)

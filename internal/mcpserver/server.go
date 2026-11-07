@@ -22,7 +22,9 @@ import (
 	"github.com/raaj6395/folio/internal/store"
 )
 
-const instructions = `Folio typesets study notes onto A4 pages. You write structured blocks; Folio measures text, flows it across pages and handles breaks. Never think in coordinates.
+const instructions = `Folio typesets study notes onto A4 pages, or onto one unbounded canvas. You write structured blocks; Folio measures text, flows it across pages and handles breaks. Never think in coordinates.
+
+Canvas (create_notebook format "canvas", or set_theme format to switch): pick it for flowcharts, architecture maps, mind maps, whiteboards or anything too big for a page. Diagrams keep their natural size (up to ~350 nodes); other blocks are A4-width cards stacked top to bottom. No page_break; page-fill numbers and the H1-per-page rules don't apply, canvas_mm gives its size. See "Canvas" in get_authoring_guide.
 
 Notebooks are dark by default; pass mode "light" to create_notebook (or set_theme) only when the user asks for light/printing. Density (compact, comfortable default, airy) adds gaps automatically.
 Every block has a stable ID (b_xxxxxxxx); use IDs for small targeted edits instead of rewriting.
@@ -100,7 +102,7 @@ const blockDescription = `One block. Set "type" plus that type's fields:
 - fill_in: prompt, lines (1-15). Blank ruled lines for the reader to write on.
 - spacer: size (small|medium|large). Vertical space.
 - two_column: left: [blocks], right: [blocks]. Side-by-side columns. Nested blocks may be heading (level 3 only), paragraph, bullets, numbered, callout, code, diagram (size half or small) or qa; they get their own IDs, which update_block, delete_blocks and read_blocks accept.
-- diagram: source (D2 language, e.g. "client -> server: request"), size? (full|half|small, default full), caption?. Compile errors are returned with line numbers; use preview_diagram to check one first.
+- diagram: source (D2 language, e.g. "client -> server: request", max 10000 chars), size? (full|half|small, default full; ignored at the top level of a canvas, which uses natural size), caption?. Compile errors are returned with line numbers; use preview_diagram to check one first.
 - divider: no fields. Horizontal rule.
 - page_break: no fields. Starts a new page.
 Text fields accept only this inline markdown: **bold**, *italic*, ` + "`code`" + `, [text](url), ==highlight==.
@@ -206,6 +208,7 @@ type LayoutSummary struct {
 	PageFill       []float64   `json:"page_fill_pct"`
 	LastPageFill   float64     `json:"last_page_fill_pct"`
 	LastPageFreeMM float64     `json:"last_page_free_mm"`
+	CanvasMM       []float64   `json:"canvas_mm,omitempty"`
 }
 
 type MutationResult struct {
@@ -248,8 +251,15 @@ func (s *Server) result(ctx context.Context, nb store.Notebook, bs []model.Block
 		return res
 	}
 	res.Layout = LayoutSummary{PageCount: r.PageCount, PageFill: r.PageFill, LastPageFill: r.LastPageFill, LastPageFreeMM: r.LastPageFreeMM(), Blocks: []BlockPage{}}
+	if nb.Format == "canvas" {
+		res.Layout.CanvasMM = []float64{r.CanvasWMM, r.CanvasHMM}
+	}
 	res.Warnings = append(res.Warnings, r.Warnings...)
 	res.LayoutHints = r.Hints()
+	if cols, rows := r.TileGrid(); nb.Format == "canvas" && r.CanvasPPI(150, canvasRenderPx) < 90 && cols*rows > 1 {
+		// Sessions never zoomed in on big canvases unprompted, so say when the overview is unreadable.
+		res.LayoutHints = append(res.LayoutHints, fmt.Sprintf("canvas %.0f×%.0f mm is too big to read in one image: before finishing, check its labels and arrows with render_pages tiles (1-%d, %d across)", r.CanvasWMM, r.CanvasHMM, cols*rows, cols))
+	}
 	for _, id := range changed {
 		res.Layout.Blocks = append(res.Layout.Blocks, BlockPage{id, r.Page(id), r.Height(id)})
 	}
@@ -295,6 +305,13 @@ func validDensity(density string) error {
 func validMode(mode string) error {
 	if !slices.Contains(layout.Modes, mode) {
 		return fmt.Errorf("unknown mode %q; valid: dark, light", mode)
+	}
+	return nil
+}
+
+func validFormat(format string) error {
+	if !slices.Contains(store.Formats, format) {
+		return fmt.Errorf("unknown format %q; valid: %s", format, strings.Join(store.Formats, ", "))
 	}
 	return nil
 }

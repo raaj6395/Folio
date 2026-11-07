@@ -34,7 +34,7 @@ func (r *Result) Fingerprints(nb store.Notebook, bs []model.Block) []string {
 			}
 		}
 		hs[i] = sha256.New()
-		fmt.Fprintf(hs[i], "%s|%s|%s|%s|%s|%s|page %d|", templateHash, nb.Title, nb.Theme, nb.Paper, nb.Mode, nb.Density, i+1)
+		fmt.Fprintf(hs[i], "%s|%s|%s|%s|%s|%s|%s|page %d|", templateHash, nb.Title, nb.Theme, nb.Paper, nb.Mode, nb.Density, nb.Format, i+1)
 		if qaHere {
 			fmt.Fprintf(hs[i], "qa %d|", qaBefore)
 		}

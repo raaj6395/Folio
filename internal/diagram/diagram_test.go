@@ -1,8 +1,8 @@
 package diagram
 
 import (
-	"bytes"
 	"context"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -15,8 +15,11 @@ func TestRenderAndRetarget(t *testing.T) {
 	if svg.WidthPx == 0 || svg.HeightPx == 0 {
 		t.Fatal("no size parsed")
 	}
-	if bytes.Contains(svg.Data, []byte("@font-face")) || !bytes.Contains(svg.Data, []byte(`font-family: "Inter"; font-weight: bold`)) {
-		t.Fatal("fonts not retargeted")
+	if !regexp.MustCompile(`font-family: "d2-\d+-font-bold", "Inter"; font-weight: bold;`).Match(svg.Data) {
+		t.Fatal("text must fall back from D2's embedded font (browsers) to the theme font (Typst)")
+	}
+	if !regexp.MustCompile(`@font-face \{\s*font-family: d2-\d+-font-bold; font-weight: bold;\s*src: url\("data:application/font-woff;base64,`).Match(svg.Data) {
+		t.Fatal("the embedded bold face must declare its weight (or browsers fake-bold it) and keep its font data intact")
 	}
 }
 

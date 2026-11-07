@@ -245,6 +245,15 @@ func TestAccountsTokensAndIsolation(t *testing.T) {
 		if _, body := bob.get("/"); strings.Contains(body, "Alice") {
 			t.Error("bob's dashboard shows alice's notebook")
 		}
+		if res, text := callTool(t, a, "set_theme", map[string]any{"notebook_id": nb.ID, "theme": "clean", "format": "canvas"}); res.IsError {
+			t.Fatalf("alice switches to a canvas: %s", text)
+		}
+		if resp, body := bob.get("/n/" + nb.ID + "/canvas.svg"); resp.StatusCode != 404 || strings.Contains(body, "Alice") {
+			t.Errorf("bob GET alice's canvas.svg: %d", resp.StatusCode)
+		}
+		if resp, body := alice.get("/n/" + nb.ID + "/canvas.svg"); resp.StatusCode != 200 || !strings.HasPrefix(body, "<svg") {
+			t.Errorf("alice GET her canvas.svg: %d", resp.StatusCode)
+		}
 
 		anon := s.browser()
 		anon.c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }

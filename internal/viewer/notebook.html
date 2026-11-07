@@ -253,6 +253,7 @@ addEventListener("scroll", () => {
 }, { passive: true });
 
 function apply(s) {
+  if (s.format === "canvas") return location.reload();
   $("title").textContent = s.title;
   document.title = s.title + " · Folio";
   $("theme").textContent = s.theme + " · " + s.mode;

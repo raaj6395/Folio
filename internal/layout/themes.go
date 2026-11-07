@@ -58,9 +58,10 @@ const (
 	minReadablePt    = 6.0
 )
 
-var sizeFrac = map[string]float64{"full": 1, "half": 0.5, "small": 0.35}
+// "canvas" is a top-level diagram on a canvas: natural size, no column or height cap.
+var sizeFrac = map[string]float64{"full": 1, "half": 0.5, "small": 0.35, "canvas": 1}
 
-func (b *Builder) docBlocks(ctx context.Context, dir string, style diagram.Style, blocks []model.Block) ([]map[string]any, []Issue, error) {
+func (b *Builder) docBlocks(ctx context.Context, dir string, style diagram.Style, blocks []model.Block, canvas bool) ([]map[string]any, []Issue, error) {
 	out := make([]map[string]any, len(blocks))
 	var warns []Issue
 	var walk func(m map[string]any) error
@@ -94,6 +95,9 @@ func (b *Builder) docBlocks(ctx context.Context, dir string, style diagram.Style
 	}
 	for i, bl := range blocks {
 		out[i] = bl.Doc()
+		if canvas && bl.Type == "diagram" {
+			out[i]["size"], out[i]["canvas"] = "canvas", true
+		}
 		if err := walk(out[i]); err != nil {
 			return nil, nil, err
 		}
@@ -107,6 +111,10 @@ func Fit(svg *diagram.SVG, size string) (wmm, hmm, labelPt float64) {
 		return textWidthMM * sizeFrac[size], 0, d2LabelPt
 	}
 	aspect := svg.HeightPx / svg.WidthPx
+	if size == "canvas" {
+		wmm = natural * maxUpscale
+		return round1(wmm), round1(wmm * aspect), round1(d2LabelPt * maxUpscale)
+	}
 	wmm = min(textWidthMM*sizeFrac[size], natural*maxUpscale)
 	if wmm*aspect > maxDiagramHeight {
 		wmm = maxDiagramHeight / aspect

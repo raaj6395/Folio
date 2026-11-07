@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -53,6 +54,8 @@ type Result struct {
 	Nested       []Pos         `json:"nested,omitempty"`
 	Warnings     []string      `json:"warnings"`
 	Issues       []Issue       `json:"issues"`
+	CanvasWMM    float64       `json:"canvas_w_mm,omitempty"`
+	CanvasHMM    float64       `json:"canvas_h_mm,omitempty"`
 	Elapsed      time.Duration `json:"-"`
 }
 
@@ -173,10 +176,10 @@ var templateHash = func() string {
 	return hex.EncodeToString(h.Sum(nil))[:8]
 }()
 
-const renderVersion = "r3"
+const renderVersion = "r4"
 
 func key(nb store.Notebook) string {
-	return fmt.Sprintf("v%d-%s-%s-%s-%s-t%s", nb.Version, nb.Theme, nb.Paper, nb.Mode, nb.Density, templateHash)
+	return fmt.Sprintf("v%d-%s-%s-%s-%s-%s-t%s", nb.Version, nb.Theme, nb.Paper, nb.Mode, nb.Density, nb.Format, templateHash)
 }
 
 // lock takes the builder lock, logging waits long enough to matter for a client timeout.
@@ -224,11 +227,22 @@ func (b *Builder) build(ctx context.Context, nb store.Notebook, blocks []model.B
 	if err != nil {
 		return nil, err
 	}
-	docs, dwarns, err := b.docBlocks(ctx, dir, th.D2For(nb.Mode), blocks)
+	canvas := nb.Format == "canvas"
+	docs, dwarns, err := b.docBlocks(ctx, dir, th.D2For(nb.Mode), blocks, canvas)
 	if err != nil {
 		return nil, err
 	}
-	doc := map[string]any{"title": nb.Title, "theme": nb.Theme, "paper": nb.Paper, "mode": nb.Mode, "density": nb.Density, "blocks": docs}
+	doc := map[string]any{"title": nb.Title, "theme": nb.Theme, "paper": nb.Paper, "mode": nb.Mode, "density": nb.Density, "format": nb.Format, "blocks": docs}
+	canvasW := textWidthMM
+	for _, d := range docs {
+		if d["canvas"] == true {
+			canvasW = max(canvasW, d["width_mm"].(float64))
+		}
+	}
+	canvasW += 2 * CanvasMarginMM
+	if canvas {
+		doc["canvas_w_mm"] = canvasW
+	}
 	js, _ := json.Marshal(doc)
 	if err := os.WriteFile(filepath.Join(dir, "doc.json"), js, 0o644); err != nil {
 		return nil, err
@@ -241,7 +255,12 @@ func (b *Builder) build(ctx context.Context, nb store.Notebook, blocks []model.B
 	if err := json.Unmarshal(raw, &marks); err != nil {
 		return nil, fmt.Errorf("parsing typst layout output: %w", err)
 	}
-	r := analyze(marks, blocks, nb.Density)
+	var r *Result
+	if canvas {
+		r = analyzeCanvas(marks, blocks, nb.Density, canvasW)
+	} else {
+		r = analyze(marks, blocks, nb.Density)
+	}
 	for _, is := range dwarns {
 		is.Page = r.Page(is.Blocks[0])
 		r.Issues = append(r.Issues, is)
@@ -274,21 +293,38 @@ func (b *Builder) current(ctx context.Context, nb store.Notebook, blocks []model
 }
 
 func (b *Builder) PDF(ctx context.Context, nb store.Notebook, blocks []model.Block) (string, error) {
-	b.lock("pdf", nb.ID)
+	return b.export(ctx, nb, blocks, "pdf")
+}
+
+// SVG exports a canvas as one SVG (a canvas is always a single page).
+func (b *Builder) SVG(ctx context.Context, nb store.Notebook, blocks []model.Block) (string, error) {
+	if nb.Format != "canvas" {
+		return "", errors.New("SVG export is only available for canvases")
+	}
+	return b.export(ctx, nb, blocks, "svg")
+}
+
+func (b *Builder) export(ctx context.Context, nb store.Notebook, blocks []model.Block, ext string) (string, error) {
+	b.lock(ext, nb.ID)
 	defer b.mu.Unlock()
 	r, err := b.current(ctx, nb, blocks)
 	if err != nil {
 		return "", err
 	}
+	return b.exportLocked(ctx, nb, r, ext)
+}
+
+// exportLocked writes out-<key>.<ext> for the current layout r; the caller holds the lock.
+func (b *Builder) exportLocked(ctx context.Context, nb store.Notebook, r *Result, ext string) (string, error) {
 	dir := b.Dir(nb.ID)
-	name := "out-" + r.Key + ".pdf"
+	name := "out-" + r.Key + "." + ext
 	if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
 		return filepath.Join(dir, name), nil
 	}
 	if _, err := b.typst(ctx, dir, "compile", "main.typ", name); err != nil {
 		return "", err
 	}
-	olds, _ := filepath.Glob(filepath.Join(dir, "out*.pdf"))
+	olds, _ := filepath.Glob(filepath.Join(dir, "out*."+ext))
 	for _, o := range olds {
 		if filepath.Base(o) != name {
 			os.Remove(o)
@@ -298,6 +334,77 @@ func (b *Builder) PDF(ctx context.Context, nb store.Notebook, blocks []model.Blo
 }
 
 var pruneAfter = 10 * time.Minute
+
+// A canvas is split into tiles, numbered row by row from the top left, so Claude can zoom in
+// on a canvas too big to read in one image. A tile is 1536×1024 px at TilePPI.
+const (
+	TileWMM = 390.0
+	TileHMM = 260.0
+	TilePPI = 100
+)
+
+func (r *Result) TileGrid() (cols, rows int) {
+	return int(math.Ceil(r.CanvasWMM / TileWMM)), int(math.Ceil(r.CanvasHMM / TileHMM))
+}
+
+// RenderTiles renders tiles of a canvas by placing its SVG export, shifted, on a tile-sized page:
+// only the tiles are rasterised, never the whole canvas at full resolution.
+func (b *Builder) RenderTiles(ctx context.Context, nb store.Notebook, blocks []model.Block, tiles []int) ([][]byte, error) {
+	if nb.Format != "canvas" {
+		return nil, errors.New("tiles are only for canvases")
+	}
+	b.lock("tiles", nb.ID)
+	defer b.mu.Unlock()
+	r, err := b.current(ctx, nb, blocks)
+	if err != nil {
+		return nil, err
+	}
+	cols, rows := r.TileGrid()
+	for _, t := range tiles {
+		if t < 1 || t > cols*rows {
+			return nil, fmt.Errorf("tile %d does not exist; this canvas has %d tiles (%d columns × %d rows, numbered row by row from the top left)", t, cols*rows, cols, rows)
+		}
+	}
+	svg, err := b.exportLocked(ctx, nb, r, "svg")
+	if err != nil {
+		return nil, err
+	}
+	var typ strings.Builder
+	for _, t := range tiles {
+		x, y := float64((t-1)%cols)*TileWMM, float64((t-1)/cols)*TileHMM
+		// The block must be taller than the image: Typst centres an image that overflows its region.
+		fmt.Fprintf(&typ, "#page(width: %.1fmm, height: %.1fmm, margin: 0pt)[#place(top + left, dx: %.1fmm, dy: %.1fmm, block(width: %.2fmm, height: %.2fmm, image(%q, width: %.2fmm)))]\n",
+			min(TileWMM, r.CanvasWMM-x), min(TileHMM, r.CanvasHMM-y), -x, -y, r.CanvasWMM, 2*r.CanvasHMM, filepath.Base(svg), r.CanvasWMM)
+	}
+	dir := b.Dir(nb.ID)
+	tdir := filepath.Join(dir, "tiles")
+	os.RemoveAll(tdir)
+	if err := os.MkdirAll(tdir, 0o755); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(filepath.Join(dir, "tiles.typ"), []byte(typ.String()), 0o644); err != nil {
+		return nil, err
+	}
+	if _, err := b.typst(ctx, dir, "compile", "tiles.typ", filepath.Join("tiles", "{p}.png"), "--ppi", strconv.Itoa(TilePPI)); err != nil {
+		return nil, err
+	}
+	out := make([][]byte, len(tiles))
+	for i := range tiles {
+		if out[i], err = os.ReadFile(filepath.Join(tdir, fmt.Sprintf("%d.png", i+1))); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+// CanvasPPI lowers ppi so a canvas's long edge stays within maxPx; pages keep want.
+func (r *Result) CanvasPPI(want, maxPx int) int {
+	side := max(r.CanvasWMM, r.CanvasHMM)
+	if side == 0 {
+		return want
+	}
+	return max(1, min(want, int(float64(maxPx)/(side/25.4))))
+}
 
 func (b *Builder) RenderPNG(ctx context.Context, nb store.Notebook, blocks []model.Block, pages []int, ppi int) ([][]byte, error) {
 	b.lock("png", nb.ID)

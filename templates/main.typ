@@ -2,6 +2,9 @@
 #import ("themes/" + doc.theme + ".typ"): theme, dark
 #let t = if doc.at("mode", default: "light") == "dark" { theme + dark } else { theme }
 #let density = doc.at("density", default: "legacy")
+// A canvas is one sheet as wide as its widest diagram and as tall as its content.
+// Text keeps the 174mm A4 column (a wide right margin); wider diagrams extend into that margin.
+#let canvas = doc.at("format", default: "a4") == "canvas"
 #let g = (
   legacy: (h1: 1.6em, h2: 1.3em, h3: 1.3em, box: 1em, callout: 1.1em, block: auto),
   compact: (h1: 1.4em, h2: 1.1em, h3: 1em, box: 0.8em, callout: 0.8em, block: 0.9em),
@@ -49,6 +52,8 @@
     h(1fr)
   },
 )
+#set page(width: doc.at("canvas_w_mm", default: 222) * 1mm, height: auto, header: none, footer: none,
+  margin: (left: 24mm, top: 24mm, bottom: 24mm, right: (doc.at("canvas_w_mm", default: 222) - 198) * 1mm)) if canvas
 #set text(font: t.body-font, size: t.body-size, fill: t.ink, lang: "en")
 #set par(leading: t.leading, justify: false)
 #show raw: set text(font: t.mono-font, size: 0.9em)
@@ -164,7 +169,7 @@
       context [#text(weight: "bold", fill: t.qa-accent)[Q#counter("qa").display().] ]
       spans(b.question)
       if b.hide_answer {
-        block(above: 0.7em, text(size: 0.85em, fill: t.muted, style: "italic")[Answer: upside down at the bottom of this page.])
+        block(above: 0.7em, text(size: 0.85em, fill: t.muted, style: "italic")[Answer: upside down at the bottom of this #if canvas [canvas] else [page].])
       } else {
         block(above: 0.7em, width: 100%, stroke: (top: 0.5pt + t.rule), inset: (top: 6pt), {
           text(weight: "bold", fill: t.qa-accent)[A. ]
@@ -193,6 +198,13 @@
   } else if ty == "spacer" {
     let h = (small: 4mm, medium: 10mm, large: 20mm).at(b.size)
     block(width: 100%, { mark(b.id); block(width: 100%, height: h); endmark(b.id) })
+  } else if ty == "diagram" and canvas and b.at("canvas", default: false) {
+    block(width: 100%, above: g.box, below: g.box, {
+      mark(b.id)
+      image(b.svg, width: b.width_mm * 1mm)
+      block(width: b.width_mm * 1mm, caption(b.caption))
+      endmark(b.id)
+    })
   } else if ty == "diagram" {
     nosplit(above: g.box, below: g.box, never: true, block(width: 100%, {
       mark(b.id)
@@ -213,9 +225,10 @@
   } else if ty == "page_break" {
     mark(b.id)
     endmark(b.id)
-    pagebreak(weak: true)
+    if not canvas { pagebreak(weak: true) }
   }
 }
 
+#if canvas { block(below: 6mm, text(size: 9pt, fill: t.muted, doc.title)) }
 #for b in doc.blocks { render(b) }
 #mark("_end")

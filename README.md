@@ -42,6 +42,7 @@
 |---|---|
 | 📄 **Real pages, not chat text** | Notes come out as typeset A4 pages, ready to print, annotate on an iPad, or study from. |
 | 🧠 **Built for studying** | Definition and key-point boxes, comparison tables, diagrams, self-test Q&A cards and fill-in blanks with real ruled lines. |
+| 🗺️ **A canvas for big diagrams** | Flowcharts, architecture maps and mind maps go on one sheet that grows to fit, at full size. Pan and zoom in the viewer; download it as SVG or PDF. |
 | 📐 **Layout that checks itself** | Folio measures every page and tells Claude what's wrong (cramped spacing, half-empty pages, oversized diagrams) along with how to fix it, so you don't have to send corrections. |
 | 👀 **Watch it being written** | A live viewer updates each page the moment Claude changes it. |
 | ↩️ **Nothing is ever lost** | Every change is a version. "Undo that" or "go back to version 4" just works. |
@@ -163,6 +164,7 @@ Then run `/mcp` in Claude Code, pick **folio**, choose **Authenticate**, and app
 - *"Put the pros and cons of SQL vs NoSQL side by side."*
 - *"Explain the TCP handshake with a sequence diagram, then 3 self-test questions."*
 - *"Make the Kafka notes use the notebook theme on ruled paper."*
+- *"Draw our whole checkout flow as a canvas, with the failure paths."*
 
 > 💡 **Printing?** Ask for **light mode** first. Dark pages look great on screen but use a lot of ink.
 
@@ -278,6 +280,7 @@ No. Your text reaches the typesetter only as data, never as code, so nothing ins
 - [ ] Version history panel in the viewer, with one-click restore
 - [ ] Read-only share links
 - [x] Folders (and Claude files notes into them)
+- [x] **Canvas:** one big sheet instead of A4 pages for flowcharts, architecture maps and mind maps, with pan and zoom ([plan](CANVAS_PLAN.md))
 - [ ] Search inside notebooks
 - [ ] Install on your phone's home screen
 - [ ] Anki export from Q&A cards; Cornell and flashcard note styles
@@ -308,7 +311,7 @@ No. Your text reaches the typesetter only as data, never as code, so nothing ins
 
 | Group | Tools |
 |---|---|
-| Notebooks | `list_notebooks`, `create_notebook`, `rename_notebook`, `delete_notebook`, `set_theme` (theme, paper, mode, density), `list_themes` |
+| Notebooks | `list_notebooks`, `create_notebook` (A4 or canvas), `rename_notebook`, `delete_notebook`, `set_theme` (theme, paper, mode, density, format), `list_themes` |
 | Preferences | `set_notebook_guidelines`, `get_notebook_guidelines` |
 | Reading | `get_outline`, `read_blocks`, `get_layout_info` |
 | Writing | `append_blocks`, `insert_blocks`, `update_block`, `delete_blocks`, `move_blocks` |

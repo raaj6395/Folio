@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"image/png"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -43,7 +44,7 @@ func TestViewer(t *testing.T) {
 	}
 	defer st.Close()
 	lb, _ := layout.New(home)
-	nb, _ := st.CreateNotebook(store.LocalUser, "Viewer <test>", "clean", "plain", "light", "", "")
+	nb, _ := st.CreateNotebook(store.LocalUser, "Viewer <test>", "clean", "plain", "light", "", "", "")
 	addPara(t, st, nb.ID, "first")
 	srv := httptest.NewServer(New(st, lb, Local, false))
 	defer srv.Close()
@@ -176,4 +177,69 @@ func get(t *testing.T, url string) string {
 		t.Fatalf("%s: %d %s", url, resp.StatusCode, b.String())
 	}
 	return b.String()
+}
+
+func TestCanvasViewer(t *testing.T) {
+	home := t.TempDir()
+	st, err := store.Open(filepath.Join(home, "folio.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	lb, _ := layout.New(home)
+	nb, _ := st.CreateNotebook(store.LocalUser, "Flow", "clean", "dotted", "light", "", "", "canvas")
+	addBlock(t, st, nb.ID, `{"type":"diagram","source":"direction: right\na -> b -> c -> d -> e -> f -> g -> h -> i -> j -> k -> l"}`)
+	a4, _ := st.CreateNotebook(store.LocalUser, "Pages", "clean", "plain", "light", "", "", "")
+	addPara(t, st, a4.ID, "x")
+	srv := httptest.NewServer(New(st, lb, Local, false))
+	defer srv.Close()
+
+	if page := get(t, srv.URL+"/n/"+nb.ID); !strings.Contains(page, `id="stage"`) || !strings.Contains(page, "canvas.svg") {
+		t.Fatal("a canvas must open in the pan/zoom canvas viewer")
+	}
+	if page := get(t, srv.URL+"/n/"+a4.ID); strings.Contains(page, `id="stage"`) {
+		t.Fatal("an A4 notebook must open in the page viewer")
+	}
+	if idx := get(t, srv.URL+"/"); !strings.Contains(idx, `class="nb canvas"`) || !strings.Contains(idx, ">Canvas</span>") {
+		t.Fatal("dashboard must mark canvases")
+	}
+
+	resp, err := http.Get(srv.URL + "/n/" + nb.ID + "/events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var s State
+	sc := bufio.NewScanner(resp.Body)
+	sc.Buffer(make([]byte, 1<<20), 1<<20)
+	for sc.Scan() {
+		if data, ok := strings.CutPrefix(sc.Text(), "data: "); ok {
+			json.Unmarshal([]byte(data), &s)
+			break
+		}
+	}
+	resp.Body.Close()
+	if s.Format != "canvas" || len(s.CanvasMM) != 2 || s.CanvasMM[0] <= 222 || s.PageCount != 1 || len(s.Blocks) != 1 || s.Blocks[0].Hash == "" || s.Blocks[0].XMM != 24 {
+		t.Fatalf("canvas state: %+v", s)
+	}
+
+	resp, err = http.Get(srv.URL + "/n/" + nb.ID + "/canvas.svg?download=1&v=" + s.Pages[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	h := resp.Header
+	if resp.StatusCode != 200 || !bytes.HasPrefix(body, []byte("<svg")) || h.Get("Content-Type") != "image/svg+xml" ||
+		!strings.HasPrefix(h.Get("Content-Security-Policy"), "default-src 'none'") || !strings.Contains(h.Get("Content-Disposition"), `filename="Flow.svg"`) ||
+		h.Get("Cache-Control") != "private, max-age=31536000, immutable" {
+		t.Fatalf("canvas.svg: %d %v", resp.StatusCode, h)
+	}
+	if resp, _ := http.Get(srv.URL + "/n/" + a4.ID + "/canvas.svg"); resp.StatusCode != 404 {
+		t.Fatalf("canvas.svg of an A4 notebook: %d", resp.StatusCode)
+	}
+	thumb := get(t, srv.URL+"/n/"+nb.ID+"/thumb.png")
+	cfg, err := png.DecodeConfig(strings.NewReader(thumb))
+	if err != nil || max(cfg.Width, cfg.Height) > canvasThumbPx {
+		t.Fatalf("canvas thumbnail must fit %dpx: %dx%d %v", canvasThumbPx, cfg.Width, cfg.Height, err)
+	}
 }

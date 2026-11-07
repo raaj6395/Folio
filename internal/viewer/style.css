@@ -268,6 +268,13 @@ ul.perm li::before { content: "✓"; position: absolute; left: 4px; color: var(-
 .sheet.changed .badge { opacity: 1; transition: none; }
 .page .num { display: block; margin-top: 8px; text-align: center; font-size: 12px; color: var(--muted); }
 
+body.canvas-view { overflow: hidden; }
+#stage { position: fixed; inset: 55px 0 0 0; overflow: hidden; touch-action: none; cursor: grab; outline: none; background-color: var(--bg); background-image: radial-gradient(color-mix(in srgb, var(--ink) 22%, transparent) 1px, transparent 1.5px); background-size: 22px 22px; }
+#stage.dragging { cursor: grabbing; }
+#board { position: absolute; left: 0; top: 0; max-width: none; border-radius: 3px; box-shadow: var(--shadow); user-select: none; -webkit-user-select: none; -webkit-user-drag: none; opacity: 0; transition: opacity 0.25s; }
+#board.ready { opacity: 1; }
+.nb.canvas .thumb img { object-fit: contain; object-position: center; }
+
 dialog { max-width: min(460px, calc(100vw - 32px)); padding: 22px 24px; background: var(--surface); color: var(--ink); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow); }
 dialog::backdrop { background: #000a; backdrop-filter: blur(2px); }
 dialog h2 { margin-top: 0; }

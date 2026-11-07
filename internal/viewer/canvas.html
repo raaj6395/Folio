@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#131824">
+<title>{{.Title}} · Folio</title>
+<link rel="icon" href="/logo.svg" type="image/svg+xml">
+<script>
+  const notebookMode = {{.Mode}};
+  let view = "";
+  try { view = localStorage.getItem("folio-view-mode") || ""; } catch (e) {}
+  document.documentElement.dataset.auto = notebookMode;
+  document.documentElement.dataset.theme = view || notebookMode;
+</script>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="canvas-view">
+<header class="bar">
+  <a class="icon-btn" href="{{if .FolderID}}/f/{{.FolderID}}{{else}}/{{end}}" title="Back to notebooks" aria-label="Back to notebooks">←</a>
+  <button class="icon-btn" type="button" id="outlineBtn" title="Contents (o)" aria-label="Contents" aria-controls="outline" aria-expanded="false" hidden>☰</button>
+  <span class="grow title" id="title">{{.Title}}</span>
+  <span class="live" id="status" role="status">Connecting…</span>
+  <span class="seg" role="group" aria-label="Zoom">
+    <button type="button" id="zout" title="Zoom out (−)" aria-label="Zoom out">−</button>
+    <button type="button" id="zreset" title="Fit to screen (0)">100%</button>
+    <button type="button" id="zin" title="Zoom in (+)" aria-label="Zoom in">+</button>
+  </span>
+  <details class="menu">
+    <summary class="icon-btn" title="More" aria-label="More options">⋯</summary>
+    <div class="pop">
+      <div class="label">Appearance</div>
+      <div class="pad">
+        <div class="seg" role="group" aria-label="Appearance in this browser">
+          <button type="button" data-view="" title="Follow the canvas's own mode">Auto</button>
+          <button type="button" data-view="dark">☾ Dark</button>
+          <button type="button" data-view="light">☀ Light</button>
+        </div>
+        <div class="hint">Only changes how you see it here.</div>
+      </div>
+      <hr>
+      <button class="item" type="button" id="follow" aria-pressed="false">Follow live edits <span class="meta" id="followState">Off</span></button>
+      <a class="item" id="svgDl" href="/n/{{.ID}}/canvas.svg?download=1">Download SVG</a>
+      <button class="item" type="button" id="helpBtn">Keyboard shortcuts <kbd>?</kbd></button>
+      <hr>
+      <div class="label">Canvas</div>
+      <div class="item static">Theme <b id="theme">{{.Theme}} · {{.Mode}}</b></div>
+      <div class="item static">Size <b id="size">–</b></div>
+      <div class="item static">Version <span><b id="version">{{.Version}}</b> · <span id="ago"></span></span></div>
+    </div>
+  </details>
+  <a class="btn" id="pdf" href="/n/{{.ID}}/pdf" title="Download PDF (d)">⤓ <span class="wide-only">Download</span> PDF</a>
+</header>
+<nav class="outline" id="outline" aria-label="Contents" hidden>
+  <div class="label">Contents</div>
+  <ol id="toc"></ol>
+</nav>
+<div id="stage" tabindex="-1" aria-label="Canvas: drag to move, pinch or ctrl+scroll to zoom">
+  <img id="board" alt="{{.Title}}" draggable="false">
+</div>
+
+<dialog id="help" aria-labelledby="helpTitle">
+  <h2 id="helpTitle">Keyboard shortcuts</h2>
+  <table>
+    <tr><td>Drag · scroll</td><td>Move around</td></tr>
+    <tr><td>Pinch · <kbd>ctrl</kbd>+scroll</td><td>Zoom</td></tr>
+    <tr><td><kbd>←</kbd> <kbd>↑</kbd> <kbd>→</kbd> <kbd>↓</kbd></td><td>Move around</td></tr>
+    <tr><td><kbd>+</kbd> <kbd>−</kbd></td><td>Zoom in / out</td></tr>
+    <tr><td><kbd>0</kbd> / <kbd>1</kbd></td><td>Fit to screen / actual size</td></tr>
+    <tr><td><kbd>o</kbd></td><td>Show or hide contents</td></tr>
+    <tr><td><kbd>f</kbd></td><td>Follow live edits</td></tr>
+    <tr><td><kbd>t</kbd></td><td>Switch appearance</td></tr>
+    <tr><td><kbd>d</kbd></td><td>Download PDF</td></tr>
+    <tr><td><kbd>?</kbd></td><td>This help</td></tr>
+  </table>
+  <button class="btn secondary block" type="button" data-close>Close</button>
+</dialog>
+<dialog id="gone" aria-labelledby="goneTitle">
+  <h2 id="goneTitle">This canvas was deleted</h2>
+  <p class="meta">It no longer exists, so there's nothing more to show here.</p>
+  <a class="btn block" href="/">Back to notebooks</a>
+</dialog>
+
+<script src="/app.js"></script>
+<script>
+const id = {{.ID}};
+const root = document.documentElement;
+const $ = (s) => document.getElementById(s);
+const stage = $("stage"), board = $("board");
+const PX_PER_MM = 96 / 25.4, MIN_Z = 0.1, MAX_Z = 4;
+const viewKey = "folio-canvas-" + id;
+let tx = 0, ty = 0, z = 1, natW = 0, natH = 0, sig = "", es = null, placed = false, updatedAt = null, saveTimer = null;
+let follow = false, marks = new Map();
+const q = () => (view ? "?mode=" + view : "");
+const clampZ = (v) => Math.min(MAX_Z, Math.max(MIN_Z, v));
+
+// Zoom by width, not transform: scale(): a scaled <img> is rasterised at layout size and blurs; a wider SVG stays sharp.
+function draw() {
+  board.style.width = natW * z + "px";
+  board.style.transform = "translate(" + tx + "px," + ty + "px)";
+  stage.style.backgroundPosition = tx + "px " + ty + "px";
+  $("zreset").textContent = Math.round(z * 100) + "%";
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => folio.store.set(viewKey, JSON.stringify({ tx, ty, z })), 300);
+}
+
+function zoomAt(nz, cx, cy) {
+  nz = clampZ(nz);
+  tx = cx - ((cx - tx) * nz) / z;
+  ty = cy - ((cy - ty) * nz) / z;
+  z = nz;
+  draw();
+}
+const center = () => [stage.clientWidth / 2, stage.clientHeight / 2];
+const stepZoom = (f) => zoomAt(z * f, ...center());
+
+function fit() {
+  if (!natW) return;
+  z = clampZ(Math.min(1, (stage.clientWidth - 48) / natW));
+  tx = Math.max(24, (stage.clientWidth - natW * z) / 2);
+  ty = 24;
+  draw();
+}
+
+function actual() {
+  zoomAt(1, ...center());
+}
+
+const pointers = new Map();
+let pinch = null;
+stage.addEventListener("pointerdown", (e) => {
+  if (e.button !== 0) return;
+  stage.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  stage.classList.add("dragging");
+  pinch = null;
+});
+stage.addEventListener("pointermove", (e) => {
+  const prev = pointers.get(e.pointerId);
+  if (!prev) return;
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pointers.size === 1) {
+    tx += e.clientX - prev.x;
+    ty += e.clientY - prev.y;
+    draw();
+    return;
+  }
+  const [a, b] = [...pointers.values()];
+  const r = stage.getBoundingClientRect();
+  const now = { d: Math.hypot(a.x - b.x, a.y - b.y), x: (a.x + b.x) / 2 - r.left, y: (a.y + b.y) / 2 - r.top };
+  if (pinch) {
+    tx += now.x - pinch.x;
+    ty += now.y - pinch.y;
+    zoomAt(z * (now.d / pinch.d), now.x, now.y);
+  }
+  pinch = now;
+});
+const lift = (e) => {
+  pointers.delete(e.pointerId);
+  pinch = null;
+  if (!pointers.size) stage.classList.remove("dragging");
+};
+stage.addEventListener("pointerup", lift);
+stage.addEventListener("pointercancel", lift);
+stage.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  if (e.ctrlKey || e.metaKey) {
+    const r = stage.getBoundingClientRect();
+    // A mouse notch sends deltaY ~100, a trackpad pinch many small ones: clamp so a notch is ~1.3x.
+    zoomAt(z * Math.exp(-Math.max(-50, Math.min(50, e.deltaY)) * 0.005), e.clientX - r.left, e.clientY - r.top);
+  } else {
+    tx -= e.deltaX;
+    ty -= e.deltaY;
+    draw();
+  }
+}, { passive: false });
+addEventListener("resize", () => {
+  if (!placed) fit();
+});
+
+function setStatus(text, cls) {
+  $("status").textContent = text;
+  $("status").className = "live " + cls;
+}
+
+function load(src, tries = 0) {
+  board.dataset.want = src;
+  const pre = new Image();
+  pre.onload = () => {
+    if (board.dataset.want !== src) return;
+    board.src = src;
+    board.classList.add("ready");
+    if (!placed) {
+      placed = true;
+      let saved = null;
+      try { saved = JSON.parse(folio.store.get(viewKey)); } catch (e) {}
+      if (saved && saved.z) {
+        tx = saved.tx;
+        ty = saved.ty;
+        z = clampZ(saved.z);
+        draw();
+      } else {
+        fit();
+      }
+    }
+  };
+  pre.onerror = () => {
+    if (tries < 3) setTimeout(() => board.dataset.want === src && load(src, tries + 1), 3000);
+    else folio.toast("Couldn't load the canvas. Try reloading the page.", null, "load");
+  };
+  pre.src = src;
+}
+
+const toc = $("toc"), outlineEl = $("outline"), outlineBtn = $("outlineBtn");
+let headings = [], outlineReady = false;
+function setOutline(open, save) {
+  open = open && headings.length > 0;
+  outlineEl.hidden = !open;
+  outlineBtn.setAttribute("aria-expanded", String(open));
+  if (save) folio.store.set("folio-outline", open ? "1" : "0");
+}
+// panTo puts a point (a heading or a block's top-left, in mm) near the top-left of the view.
+function panTo(h) {
+  const left = outlineEl.hidden ? 40 : 312;
+  tx = left - h.x_mm * PX_PER_MM * z;
+  ty = 40 - h.y_mm * PX_PER_MM * z;
+  draw();
+}
+function renderOutline(list) {
+  if (JSON.stringify(list) !== JSON.stringify(headings)) {
+    headings = list;
+    toc.replaceChildren(...list.map((h) => {
+      const li = document.createElement("li");
+      li.className = "l" + h.level;
+      const a = document.createElement("a");
+      a.href = "#";
+      a.textContent = h.text;
+      a.onclick = (e) => { e.preventDefault(); panTo(h); };
+      li.append(a);
+      return li;
+    }));
+  }
+  outlineBtn.hidden = !list.length;
+  if (!outlineReady) {
+    outlineReady = true;
+    setOutline(matchMedia("(min-width: 1100px)").matches && folio.store.get("folio-outline") === "1", false);
+  } else if (!list.length) {
+    setOutline(false, false);
+  }
+}
+
+function apply(s) {
+  if (s.format !== "canvas") return location.reload();
+  $("title").textContent = s.title;
+  document.title = s.title + " · Folio";
+  $("theme").textContent = s.theme + " · " + s.mode;
+  $("version").textContent = s.version;
+  $("size").textContent = Math.round(s.canvas_mm[0]) + " × " + Math.round(s.canvas_mm[1]) + " mm";
+  if (!view) {
+    root.dataset.auto = s.mode;
+    folio.applyView();
+  }
+  $("pdf").href = "/n/" + id + "/pdf" + q();
+  updatedAt = new Date(s.updated_at);
+  tick();
+  natW = s.canvas_mm[0] * PX_PER_MM;
+  natH = s.canvas_mm[1] * PX_PER_MM;
+  const changed = (s.blocks || []).find((b) => marks.size && marks.get(b.id) !== b.h);
+  marks = new Map((s.blocks || []).map((b) => [b.id, b.h]));
+  if (s.pages[0] !== sig) {
+    const updated = sig !== "";
+    sig = s.pages[0];
+    load("/n/" + id + "/canvas.svg?v=" + sig + (view ? "&mode=" + view : ""));
+    if (updated && changed && follow) panTo(changed);
+    else if (updated && changed) folio.toast("The canvas was updated", { label: "Show me", run: () => panTo(changed) }, "update");
+    else if (updated) folio.toast("The canvas was updated", null, "update");
+  }
+  draw();
+  renderOutline(s.outline || []);
+}
+
+function tick() {
+  if (updatedAt) $("ago").textContent = "updated " + folio.ago(updatedAt);
+}
+setInterval(tick, 15000);
+
+function connect() {
+  if (es) es.close();
+  sig = "";
+  es = new EventSource("/n/" + id + "/events" + q());
+  es.onopen = () => setStatus("Live", "on");
+  es.onerror = () => setStatus(navigator.onLine ? "Reconnecting…" : "Offline", "off");
+  es.onmessage = (e) => apply(JSON.parse(e.data));
+  es.addEventListener("gone", () => {
+    setStatus("Deleted", "off");
+    es.close();
+    $("gone").showModal();
+  });
+}
+
+function setFollow(on, announceIt) {
+  follow = on;
+  folio.store.set("folio-follow", on ? "1" : "");
+  $("follow").setAttribute("aria-pressed", String(on));
+  $("followState").textContent = on ? "On" : "Off";
+  if (announceIt) folio.toast(on ? "Following edits: the view moves to what changed" : "Stopped following edits");
+}
+
+function cycleView() {
+  const order = ["", "dark", "light"];
+  folio.setView(order[(order.indexOf(view) + 1) % order.length]);
+  folio.toast("Appearance: " + (view || "auto"), null, "view");
+}
+
+$("zin").onclick = () => stepZoom(1.25);
+$("zout").onclick = () => stepZoom(0.8);
+$("zreset").onclick = fit;
+$("helpBtn").onclick = () => $("help").showModal();
+$("follow").onclick = () => setFollow(!follow, true);
+outlineBtn.onclick = () => setOutline(outlineEl.hidden, true);
+document.addEventListener("folio:view", (e) => {
+  view = e.detail;
+  connect();
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest("input, select, textarea") || document.querySelector("dialog[open]")) return;
+  const pan = (dx, dy) => () => { tx += dx; ty += dy; draw(); };
+  const act = {
+    ArrowLeft: pan(80, 0), ArrowRight: pan(-80, 0), ArrowUp: pan(0, 80), ArrowDown: pan(0, -80),
+    "+": () => stepZoom(1.25), "=": () => stepZoom(1.25), "-": () => stepZoom(0.8), "0": fit, "1": actual,
+    o: () => setOutline(outlineEl.hidden, true), t: cycleView, d: () => $("pdf").click(), f: () => setFollow(!follow, true),
+    "?": () => $("help").showModal(),
+  }[e.key];
+  if (act) {
+    e.preventDefault();
+    act();
+  }
+});
+
+setFollow(folio.store.get("folio-follow") === "1", false);
+connect();
+</script>
+</body>
+</html>

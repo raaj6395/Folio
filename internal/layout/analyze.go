@@ -51,7 +51,7 @@ func analyze(marks []mark, blocks []model.Block, density string) *Result {
 		i, ok := idx[m.ID]
 		if !ok {
 			if m.K == "s" {
-				r.Nested = append(r.Nested, Pos{ID: m.ID, Page: m.Page, YMM: round1(mm)})
+				r.Nested = append(r.Nested, Pos{ID: m.ID, Page: m.Page, YMM: round1(mm), XMM: round1(m.X * 25.4 / 72)})
 			}
 			continue
 		}
@@ -83,6 +83,31 @@ func analyze(marks []mark, blocks []model.Block, density string) *Result {
 	}
 	r.Issues = checks(r, density)
 	r.Warnings = warningsOf(r.Issues)
+	return r
+}
+
+// analyzeCanvas lays out positions like analyze, but a canvas has one page and no page checks.
+func analyzeCanvas(marks []mark, blocks []model.Block, density string, widthMM float64) *Result {
+	r := analyze(marks, blocks, density)
+	endY := marginTopMM
+	for _, m := range marks {
+		if m.ID == "_end" {
+			endY = m.Y * 25.4 / 72
+		}
+	}
+	r.PageCount, r.PageFill, r.LastPageFill = 1, []float64{100}, 100
+	r.CanvasWMM, r.CanvasHMM = round1(widthMM), round1(endY+CanvasMarginMM)
+	is := crampedIssues(r.Blocks, density)
+	for _, p := range r.Blocks {
+		if p.Type == "page_break" {
+			is = append(is, Issue{"page_break_ignored", 1, []string{p.ID}, fmt.Sprintf("page_break %s has no effect on a canvas", p.ID), "delete it; use a divider or spacer to separate parts"})
+		}
+	}
+	if r.CanvasWMM > MaxCanvasMM || r.CanvasHMM > MaxCanvasMM {
+		is = append(is, Issue{"canvas_too_large", 1, nil, fmt.Sprintf("the canvas is %.0f×%.0f mm, over %.0f mm on a side: hard to read and slow to render", r.CanvasWMM, r.CanvasHMM, MaxCanvasMM),
+			"split it into several canvases, or group nodes into D2 containers and simplify"})
+	}
+	r.Issues, r.Warnings = is, warningsOf(is)
 	return r
 }
 

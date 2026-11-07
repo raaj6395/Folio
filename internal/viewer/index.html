@@ -377,7 +377,7 @@ init();
 </script>
 </body>
 </html>
-{{define "card"}}<article class="nb" data-key="{{.ID}}:{{.Version}}{{if .Favorite}}:f{{end}}"{{if .Movable}} draggable="true" data-drag-nb="{{.ID}}"{{end}} data-title="{{.Title}}" data-updated="{{.UpdatedAt.UTC.Format "2006-01-02T15:04:05Z07:00"}}">
+{{define "card"}}<article class="nb{{if eq .Format "canvas"}} canvas{{end}}" data-key="{{.ID}}:{{.Version}}{{if .Favorite}}:f{{end}}"{{if .Movable}} draggable="true" data-drag-nb="{{.ID}}"{{end}} data-title="{{.Title}}" data-updated="{{.UpdatedAt.UTC.Format "2006-01-02T15:04:05Z07:00"}}">
     <div class="thumb"><img alt="" loading="lazy" draggable="false" data-src="/n/{{.ID}}/thumb.png?v={{.Version}}"></div>
     {{if .Movable}}<input type="checkbox" class="pick" value="{{.ID}}" aria-label="Select {{.Title}}">{{end}}
     <form method="post" action="/n/{{.ID}}/favorite" class="fav">
@@ -386,7 +386,7 @@ init();
     </form>
     <div class="body">
       <a class="t" href="/n/{{.ID}}">{{.Title}}</a>
-      <div class="foot">{{if .Path}}<span class="pill" title="Folder">{{.Path}}</span>{{else}}<span class="pill">{{.Theme}}</span><span class="pill">{{.Mode}}</span>{{end}}<time class="meta" datetime="{{.UpdatedAt.UTC.Format "2006-01-02T15:04:05Z07:00"}}">{{.UpdatedAt.Format "2 Jan 2006"}}</time></div>
+      <div class="foot">{{if eq .Format "canvas"}}<span class="pill" title="One big sheet instead of A4 pages">Canvas</span>{{end}}{{if .Path}}<span class="pill" title="Folder">{{.Path}}</span>{{else}}<span class="pill">{{.Theme}}</span><span class="pill">{{.Mode}}</span>{{end}}<time class="meta" datetime="{{.UpdatedAt.UTC.Format "2006-01-02T15:04:05Z07:00"}}">{{.UpdatedAt.Format "2 Jan 2006"}}</time></div>
     </div>
     <details class="menu">
       <summary class="icon-btn" aria-label="Actions for {{.Title}}" title="Actions">⋯</summary>

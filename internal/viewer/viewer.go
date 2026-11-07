@@ -2,7 +2,9 @@ package viewer
 
 import (
 	"context"
+	"crypto/sha256"
 	_ "embed"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -33,6 +35,9 @@ var indexHTML string
 //go:embed notebook.html
 var notebookHTML string
 
+//go:embed canvas.html
+var canvasHTML string
+
 //go:embed style.css
 var styleCSS string
 
@@ -48,6 +53,7 @@ var errorHTML string
 var (
 	indexTmpl    = template.Must(template.New("index").Parse(indexHTML))
 	notebookTmpl = template.Must(template.New("notebook").Parse(notebookHTML))
+	canvasTmpl   = template.Must(template.New("canvas").Parse(canvasHTML))
 	errorTmpl    = template.Must(template.New("error").Parse(errorHTML))
 )
 
@@ -83,6 +89,7 @@ func New(st *store.Store, lb *layout.Builder, user func(*http.Request) (id, emai
 	mux.HandleFunc("GET /n/{id}/page/{file}", s.require(false, s.page))
 	mux.HandleFunc("GET /n/{id}/pdf", s.require(true, s.pdf))
 	mux.HandleFunc("GET /n/{id}/thumb.png", s.require(false, s.thumb))
+	mux.HandleFunc("GET /n/{id}/canvas.svg", s.require(false, s.svg))
 	cop := http.NewCrossOriginProtection()
 	mux.Handle("POST /n/{id}/rename", cop.Handler(s.require(true, s.rename)))
 	mux.Handle("POST /n/{id}/delete", cop.Handler(s.require(true, s.del)))
@@ -131,6 +138,18 @@ type State struct {
 	UpdatedAt time.Time `json:"updated_at"`
 	Pages     []string  `json:"pages"`
 	Outline   []Heading `json:"outline"`
+	Format    string    `json:"format"`
+	CanvasMM  []float64 `json:"canvas_mm,omitempty"`
+	Blocks    []Mark    `json:"blocks,omitempty"`
+}
+
+// Mark is where a top-level canvas block sits, with a hash of its content so the viewer can tell
+// which block changed and pan to it.
+type Mark struct {
+	ID   string  `json:"id"`
+	XMM  float64 `json:"x_mm"`
+	YMM  float64 `json:"y_mm"`
+	Hash string  `json:"h"`
 }
 
 type Heading struct {
@@ -138,6 +157,7 @@ type Heading struct {
 	Level int     `json:"level"`
 	Page  int     `json:"page"`
 	YMM   float64 `json:"y_mm"`
+	XMM   float64 `json:"x_mm"`
 }
 
 func outline(bs []model.Block, r *layout.Result) []Heading {
@@ -151,7 +171,7 @@ func outline(bs []model.Block, r *layout.Result) []Heading {
 		for _, sp := range model.ParseInline(h.Text) {
 			text.WriteString(sp.Text)
 		}
-		out = append(out, Heading{Text: text.String(), Level: h.Level, Page: p.Page, YMM: p.YMM})
+		out = append(out, Heading{Text: text.String(), Level: h.Level, Page: p.Page, YMM: p.YMM, XMM: p.XMM})
 	}
 	return out
 }
@@ -182,7 +202,15 @@ func (s *Server) state(r *http.Request) (State, error) {
 	if err != nil {
 		return State{}, err
 	}
-	return State{ID: nb.ID, Title: nb.Title, Theme: nb.Theme, Mode: nb.Mode, Version: nb.Version, PageCount: res.PageCount, UpdatedAt: nb.UpdatedAt, Pages: res.Fingerprints(nb, bs), Outline: outline(bs, res)}, nil
+	st := State{ID: nb.ID, Title: nb.Title, Theme: nb.Theme, Mode: nb.Mode, Version: nb.Version, PageCount: res.PageCount, UpdatedAt: nb.UpdatedAt, Pages: res.Fingerprints(nb, bs), Outline: outline(bs, res), Format: nb.Format}
+	if nb.Format == "canvas" {
+		st.CanvasMM = []float64{res.CanvasWMM, res.CanvasHMM}
+		for i, p := range res.Blocks {
+			sum := sha256.Sum256(append([]byte(bs[i].Type), bs[i].Data...))
+			st.Blocks = append(st.Blocks, Mark{p.ID, p.XMM, p.YMM, hex.EncodeToString(sum[:6])})
+		}
+	}
+	return st, nil
 }
 
 func renderError(w http.ResponseWriter, status int, title, msg string) {
@@ -382,7 +410,49 @@ func (s *Server) notebook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
+	if nb.Format == "canvas" {
+		canvasTmpl.Execute(w, nb)
+		return
+	}
 	notebookTmpl.Execute(w, nb)
+}
+
+// svg serves a canvas as one SVG: the viewer zooms it without blurring, and it is the SVG download.
+func (s *Server) svg(w http.ResponseWriter, r *http.Request) {
+	nb, bs, err := s.load(r)
+	if err == nil && nb.Format != "canvas" {
+		err = store.ErrNotFound
+	}
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	res, err := s.lb.Build(r.Context(), nb, bs)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	path, err := s.lb.SVG(r.Context(), nb, bs)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "image/svg+xml")
+	// Opened directly in a tab, the SVG is a document: let it show its embedded images and nothing else.
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; img-src data:; style-src 'unsafe-inline'")
+	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+	if r.URL.Query().Get("v") != res.Fingerprints(nb, bs)[0] {
+		w.Header().Set("Cache-Control", "no-store")
+	}
+	if r.URL.Query().Has("download") {
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.svg"`, strings.ReplaceAll(nb.Title, `"`, "")))
+	}
+	w.Write(data)
 }
 
 func (s *Server) events(w http.ResponseWriter, r *http.Request) {
@@ -440,6 +510,12 @@ func (s *Server) page(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) thumb(w http.ResponseWriter, r *http.Request) { s.png(w, r, 1, ThumbPPI, false) }
 
+// Long edge of a canvas PNG: a canvas can be metres wide, so its PNGs are capped by pixels, not ppi.
+const (
+	canvasThumbPx = 600
+	canvasPagePx  = 1568
+)
+
 func (s *Server) png(w http.ResponseWriter, r *http.Request, n, ppi int, all bool) {
 	nb, bs, err := s.load(r)
 	if err != nil {
@@ -461,6 +537,13 @@ func (s *Server) png(w http.ResponseWriter, r *http.Request, n, ppi int, all boo
 		for i := range pages {
 			pages[i] = i + 1
 		}
+	}
+	if nb.Format == "canvas" {
+		maxPx := canvasThumbPx
+		if all {
+			maxPx = canvasPagePx
+		}
+		ppi = res.CanvasPPI(ppi, maxPx)
 	}
 	pngs, err := s.lb.RenderPNG(r.Context(), nb, bs, pages, ppi)
 	if err != nil {

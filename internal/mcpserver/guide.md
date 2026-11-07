@@ -1,6 +1,6 @@
 # Folio authoring guide
 
-Folio is a typesetter. You write **blocks**; Folio flows them onto A4 pages. You never place anything with coordinates.
+Folio is a typesetter. You write **blocks**; Folio flows them onto A4 pages, or onto one unbounded canvas (see Canvas). You never place anything with coordinates.
 
 ## Workflow
 1. `create_notebook` (or `list_notebooks` to continue one). New notebooks use density `comfortable`. If the user names a folder or subject ("in my Networks folder"), pass `folder`; call `list_folders` first if unsure and reuse an existing folder rather than making a near-duplicate.
@@ -79,6 +79,17 @@ Tips:
 - Keep labels to 1–3 words; put explanations in the paragraph next to it.
 - Use `preview_diagram` when unsure; it returns D2 errors with line numbers.
 - In JSON, newlines inside `source` are `\n`.
+
+## Canvas
+A canvas is one sheet with no pages, for content that is mostly a picture: flowcharts, architecture maps, mind maps, process maps, whiteboards, or any diagram too big for a page (more than ~10 nodes). Use A4 for study notes, cheat sheets and anything to print.
+
+- Create one with `create_notebook` and `"format": "canvas"`, or switch an existing notebook with `set_theme` (`"format": "canvas"` or `"a4"`); the blocks don't change and `undo` switches back.
+- Top-level diagrams render at their **natural size**: no shrinking, no height cap, so the size field is ignored and labels stay readable. One large diagram (up to ~350 nodes, 10000 chars of D2) is normal.
+- Every other block is an A4-width card, stacked top to bottom. Use `two_column` to put short notes beside a small diagram.
+- A good canvas: a level-1 heading, a one-line paragraph saying what it shows, the big diagram, then a short legend or key points (a callout or bullets).
+- Big graphs: group related nodes in containers (`payments: { auth; capture; refund }`), use `direction: right` for flows, label edges with 1–3 words. The `notebook` theme gives hand-drawn sketch diagrams, like a whiteboard.
+- Don't use `page_break` (ignored and reported). Page fill numbers don't apply; each write returns `canvas_mm` [width, height] instead.
+- `render_pages` with `pages: [1]` shows the whole canvas scaled to 1568 px and says how many tiles it has; pass `tiles` (up to 4) to zoom in and read labels. Use `preview_diagram` with `"size": "canvas"` to check one diagram first.
 
 ## Style for good notes
 - One idea per callout. Use `definition` for terms, `key_point` for the thing to remember, `warning` for pitfalls.

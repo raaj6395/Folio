@@ -429,6 +429,9 @@ func (s *Spacer) validate() error {
 func (s *Spacer) doc() map[string]any { return map[string]any{"size": s.Size} }
 func (s *Spacer) summary() string     { return "spacer " + s.Size }
 
+// MaxDiagramSource bounds D2 layout time: ~350 nodes, ~1.5s on a laptop, ~10x that on a 0.1 CPU host.
+const MaxDiagramSource = 10000
+
 type Diagram struct {
 	Source  string `json:"source"`
 	Caption string `json:"caption,omitempty"`
@@ -436,11 +439,15 @@ type Diagram struct {
 }
 
 func (d *Diagram) validate() error {
-	if d.Size == "" {
+	// "canvas" is preview_diagram's size for a canvas; a canvas ignores size at the top level anyway.
+	if d.Size == "" || d.Size == "canvas" {
 		d.Size = "full"
 	}
 	if !slices.Contains([]string{"full", "half", "small"}, d.Size) {
 		return fmt.Errorf(`size must be "full", "half" or "small", got %q`, d.Size)
+	}
+	if n := utf8.RuneCountInString(d.Source); n > MaxDiagramSource {
+		return fmt.Errorf("source is %d chars, max %d; split it into several diagrams or group nodes into containers", n, MaxDiagramSource)
 	}
 	return required("source", d.Source)
 }

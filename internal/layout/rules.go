@@ -12,6 +12,8 @@ const (
 	BoxInsetMM           = 2.8
 	MonotoneRun          = 4
 	MaxHints             = 6
+	MaxCanvasMM          = 5000.0
+	CanvasMarginMM       = 24.0
 )
 
 var penalty = map[string]float64{
@@ -25,6 +27,8 @@ var penalty = map[string]float64{
 	"oversized_diagram":  15,
 	"monotone_stack":     10,
 	"cramped":            10,
+	"canvas_too_large":   15,
+	"page_break_ignored": 5,
 }
 
 var insetTypes = map[string]bool{"callout": true, "qa": true}
