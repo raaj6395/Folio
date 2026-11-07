@@ -19,18 +19,24 @@ import (
 	"github.com/raaj6395/folio/internal/account"
 	"github.com/raaj6395/folio/internal/layout"
 	"github.com/raaj6395/folio/internal/model"
+	"github.com/raaj6395/folio/internal/notetemplates"
 	"github.com/raaj6395/folio/internal/store"
 )
 
-const instructions = `Folio typesets study notes onto A4 pages, or onto one unbounded canvas. You write structured blocks; Folio measures text, flows it across pages and handles breaks. Never think in coordinates.
+var instructions = instructionsHead + "\n" + templateRules + notetemplates.Index() + "\n\n" + instructionsTail
+
+const instructionsHead = `Folio typesets study notes onto A4 pages, or onto one unbounded canvas. You write structured blocks; Folio measures text, flows it across pages and handles breaks. Never think in coordinates.
 
 Canvas (create_notebook format "canvas", or set_theme format to switch): pick it for flowcharts, architecture maps, mind maps, whiteboards or anything too big for a page. Diagrams keep their natural size (up to ~350 nodes); other blocks are A4-width cards stacked top to bottom. No page_break; page-fill numbers and the H1-per-page rules don't apply, canvas_mm gives its size. See "Canvas" in get_authoring_guide.
 
 Notebooks are dark by default; pass mode "light" to create_notebook (or set_theme) only when the user asks for light/printing. Density (compact, comfortable default, airy) adds gaps automatically.
 Every block has a stable ID (b_xxxxxxxx); use IDs for small targeted edits instead of rewriting.
-Folders: when the user names a folder, course or subject to keep notes in, pass folder to create_notebook (a path like "Semester 1/Networks", at most 3 levels) or use move_notebook. Call list_folders first if unsure and reuse an existing folder; don't invent folders the user didn't ask for.
+Folders: when the user names a folder, course or subject to keep notes in, pass folder to create_notebook (a path like "Semester 1/Networks", at most 3 levels) or use move_notebook. Call list_folders first if unsure and reuse an existing folder; don't invent folders the user didn't ask for.`
 
-Layout rules (full version in get_authoring_guide):
+const templateRules = `Templates: each kind of note has a blueprint. Pick it from the request without asking, call get_authoring_guide with template=<id>, pass template to create_notebook and write every required section; when adding to a notebook, keep its template (get_outline). Switch if the user asks.
+`
+
+const instructionsTail = `Layout rules (full version in get_authoring_guide):
 - Each H1 section fits on one page; put a page_break before every H1 except the first.
 - Aim for 60-95% page fill. Under 50% before a page_break/new H1, or a few % spilling onto the next page, are problems to fix.
 - Don't stack everything top to bottom: put related things side by side with two_column (half diagram left, steps/bullets/callout right; a column may start with a level-3 heading). Pair short callouts.
@@ -40,10 +46,10 @@ Layout rules (full version in get_authoring_guide):
 - Text is left-aligned; tables align text left and numbers right automatically.
 
 Workflow:
-1. get_authoring_guide if you haven't, then create_notebook (or list_notebooks).
+1. get_authoring_guide (with template when the note fits one) if you haven't, then create_notebook (or list_notebooks).
 2. Write a whole section per append_blocks call.
 3. Read each write's layout, warnings and layout_hints; fix issues before moving on.
-4. Before saying done: check_layout, fix what it reports, then render_pages once on the changed pages (max 2).
+4. Before saying done: check_layout, fix what it reports, then render_pages once on the changed pages (max 2). In your reply, name the template you used in one line.
 5. The user's notebook_guidelines (get_outline, first write response, get_notebook_guidelines) override these rules; save lasting preferences with set_notebook_guidelines.`
 
 //go:embed guide.md
@@ -52,7 +58,7 @@ var guideBody string
 //go:embed layout_rules.md
 var layoutRules string
 
-var guide = guideBody + "\n\n# Layout rules\n\n" + layoutRules
+var guide = guideBody + "\n\n# Layout rules\n\n" + layoutRules + "\n\n# Templates\n\nFor these kinds of note, call get_authoring_guide with template=<id> for the blueprint:\n" + notetemplates.Index()
 
 var papers = []string{"plain", "ruled", "dotted", "grid"}
 
@@ -102,7 +108,7 @@ const blockDescription = `One block. Set "type" plus that type's fields:
 - fill_in: prompt, lines (1-15). Blank ruled lines for the reader to write on.
 - spacer: size (small|medium|large). Vertical space.
 - two_column: left: [blocks], right: [blocks]. Side-by-side columns. Nested blocks may be heading (level 3 only), paragraph, bullets, numbered, callout, code, diagram (size half or small) or qa; they get their own IDs, which update_block, delete_blocks and read_blocks accept.
-- diagram: source (D2 language, e.g. "client -> server: request", max 10000 chars), size? (full|half|small, default full; ignored at the top level of a canvas, which uses natural size), caption?. Compile errors are returned with line numbers; use preview_diagram to check one first.
+- diagram: source (D2 language, e.g. "client -> server: request"), size? (full|half|small, default full; natural on a canvas), caption?. Compile errors are returned with line numbers; use preview_diagram to check one first.
 - divider: no fields. Horizontal rule.
 - page_break: no fields. Starts a new page.
 Text fields accept only this inline markdown: **bold**, *italic*, ` + "`code`" + `, [text](url), ==highlight==.
@@ -129,6 +135,7 @@ func schemaFor[T any]() *jsonschema.Schema {
 	s, err := jsonschema.For[T](&jsonschema.ForOptions{TypeSchemas: map[reflect.Type]*jsonschema.Schema{
 		reflect.TypeFor[json.RawMessage](): blockSchema,
 		reflect.TypeFor[model.Block]():     {Type: "object", Description: "A block: id, type and its type-specific fields"},
+		reflect.TypeFor[templateID]():      {Type: "string", Enum: anySlice(notetemplates.IDs())},
 	}})
 	if err != nil {
 		panic(err)
@@ -218,6 +225,7 @@ type MutationResult struct {
 	Warnings           []string      `json:"warnings"`
 	LayoutHints        []string      `json:"layout_hints,omitempty"`
 	NotebookGuidelines string        `json:"notebook_guidelines,omitempty"`
+	TemplateChecklist  string        `json:"template_checklist,omitempty"`
 }
 
 func (s *Server) mutate(ctx context.Context, id string, expected *int, tool, summary string, fn func(nb *store.Notebook, bs []model.Block) ([]model.Block, []string, error)) (MutationResult, error) {
@@ -240,6 +248,9 @@ func (s *Server) result(ctx context.Context, nb store.Notebook, bs []model.Block
 	}
 	if s.firstWrite(userOf(ctx), nb.ID) {
 		res.NotebookGuidelines = nb.Guidelines
+		if t, ok := notetemplates.ByID(nb.Template); ok {
+			res.TemplateChecklist = t.Checklist()
+		}
 	}
 	r, err := s.build(ctx, nb, bs)
 	if errors.Is(err, errLayoutPending) {
@@ -250,6 +261,7 @@ func (s *Server) result(ctx context.Context, nb store.Notebook, bs []model.Block
 		res.Warnings = append(res.Warnings, "the change was saved but rendering failed: "+err.Error())
 		return res
 	}
+	r = checked(nb, bs, r)
 	res.Layout = LayoutSummary{PageCount: r.PageCount, PageFill: r.PageFill, LastPageFill: r.LastPageFill, LastPageFreeMM: r.LastPageFreeMM(), Blocks: []BlockPage{}}
 	if nb.Format == "canvas" {
 		res.Layout.CanvasMM = []float64{r.CanvasWMM, r.CanvasHMM}

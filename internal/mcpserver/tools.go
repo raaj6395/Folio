@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"github.com/raaj6395/folio/internal/diagram"
 	"github.com/raaj6395/folio/internal/layout"
 	"github.com/raaj6395/folio/internal/model"
+	"github.com/raaj6395/folio/internal/notetemplates"
 	"github.com/raaj6395/folio/internal/store"
 	"github.com/raaj6395/folio/internal/viewer"
 )
@@ -41,6 +43,7 @@ type NotebookInfo struct {
 	BlockCount int       `json:"block_count"`
 	UpdatedAt  time.Time `json:"updated_at"`
 	Folder     string    `json:"folder,omitempty"`
+	Template   string    `json:"template,omitempty"`
 }
 
 func (s *Server) info(ctx context.Context, nb store.Notebook) (NotebookInfo, error) {
@@ -77,7 +80,7 @@ func (s *Server) infoIn(ctx context.Context, nb store.Notebook, paths map[string
 			return NotebookInfo{}, err
 		}
 	}
-	info := NotebookInfo{ID: nb.ID, Title: nb.Title, Theme: nb.Theme, Paper: nb.Paper, Mode: nb.Mode, Density: nb.Density, Format: nb.Format, Version: nb.Version, BlockCount: len(bs), UpdatedAt: nb.UpdatedAt, Folder: paths[nb.FolderID]}
+	info := NotebookInfo{ID: nb.ID, Title: nb.Title, Theme: nb.Theme, Paper: nb.Paper, Mode: nb.Mode, Density: nb.Density, Format: nb.Format, Version: nb.Version, BlockCount: len(bs), UpdatedAt: nb.UpdatedAt, Folder: paths[nb.FolderID], Template: nb.Template}
 	if r := s.lb.Cached(nb); r != nil {
 		info.PageCount = r.PageCount
 	}
@@ -85,13 +88,21 @@ func (s *Server) infoIn(ctx context.Context, nb store.Notebook, paths map[string
 }
 
 type createIn struct {
-	Title   string `json:"title" jsonschema:"Notebook title, shown in the page header"`
-	Theme   string `json:"theme,omitempty" jsonschema:"Visual theme; default clean. See list_themes"`
-	Paper   string `json:"paper,omitempty" jsonschema:"Paper background: plain, ruled, dotted or grid. Defaults to the theme's paper"`
-	Mode    string `json:"mode,omitempty" jsonschema:"dark (default) or light. Use light only when the user asks for a light/white look or wants to print"`
-	Density string `json:"density,omitempty" jsonschema:"Spacing: compact, comfortable (default) or airy. The renderer adds gaps before headings and around boxes; no spacers needed"`
-	Folder  string `json:"folder,omitempty" jsonschema:"Folder path to file the notebook in, e.g. Semester 1/Networks (at most 3 levels). Missing folders are created; matching ignores case. Omit for the top level"`
-	Format  string `json:"format,omitempty" jsonschema:"a4 (default): printable study pages. canvas: one unbounded sheet for flowcharts, architecture maps and mind maps; diagrams keep their natural size"`
+	Title    string     `json:"title" jsonschema:"Notebook title, shown in the page header"`
+	Theme    string     `json:"theme,omitempty" jsonschema:"Visual theme; default clean. See list_themes"`
+	Paper    string     `json:"paper,omitempty" jsonschema:"Paper background: plain, ruled, dotted or grid. Defaults to the theme's paper"`
+	Mode     string     `json:"mode,omitempty" jsonschema:"dark (default) or light. Use light only when the user asks for a light/white look or wants to print"`
+	Density  string     `json:"density,omitempty" jsonschema:"Spacing: compact, comfortable (default) or airy. The renderer adds gaps before headings and around boxes; no spacers needed"`
+	Folder   string     `json:"folder,omitempty" jsonschema:"Folder path to file the notebook in, e.g. Semester 1/Networks (at most 3 levels). Missing folders are created; matching ignores case. Omit for the top level"`
+	Template templateID `json:"template,omitempty" jsonschema:"Note template (see instructions); Folio checks its required sections"`
+	Format   string     `json:"format,omitempty" jsonschema:"a4 (default) or canvas: one unbounded sheet for flowcharts, maps and mind maps"`
+}
+
+// templateID is a note template's ID; schemaFor lists the valid IDs as its enum.
+type templateID string
+
+type guideIn struct {
+	Template templateID `json:"template,omitempty" jsonschema:"Return only this template's blueprint"`
 }
 
 type listIn struct {
@@ -132,6 +143,7 @@ type Outline struct {
 	Format     string         `json:"format"`
 	PageCount  int            `json:"page_count"`
 	Guidelines string         `json:"notebook_guidelines,omitempty"`
+	Template   string         `json:"template,omitempty"`
 	Blocks     []OutlineEntry `json:"blocks"`
 }
 
@@ -161,9 +173,9 @@ type CheckOut struct {
 
 type renderIn struct {
 	NotebookID string `json:"notebook_id" jsonschema:"ID of the notebook"`
-	Pages      []int  `json:"pages,omitempty" jsonschema:"1-indexed page numbers to render, max 4 per call. A canvas has one page: [1], an overview of the whole canvas"`
-	Tiles      []int  `json:"tiles,omitempty" jsonschema:"Canvas only: zoom in on up to 4 tiles at readable size instead of the overview. Tiles are numbered row by row from the top left; the overview says how many there are"`
-	PPI        int    `json:"ppi,omitempty" jsonschema:"Resolution in pixels per inch; default 80 (enough to judge layout), max 150. A canvas is scaled down to fit 1568 px"`
+	Pages      []int  `json:"pages,omitempty" jsonschema:"1-indexed page numbers to render, max 4 per call; a canvas has only page 1"`
+	Tiles      []int  `json:"tiles,omitempty" jsonschema:"Canvas only: up to 4 zoomed-in tiles, numbered as the overview says"`
+	PPI        int    `json:"ppi,omitempty" jsonschema:"Resolution in pixels per inch; default 80 (enough to judge layout), max 150"`
 }
 
 type exportIn struct {
@@ -182,7 +194,7 @@ type LayoutInfo struct {
 type previewIn struct {
 	Source string `json:"source" jsonschema:"D2 diagram source"`
 	Theme  string `json:"theme,omitempty" jsonschema:"Theme whose diagram style to use; default clean"`
-	Size   string `json:"size,omitempty" jsonschema:"full, half or small (default full); affects the reported on-page size. canvas = natural size on a canvas"`
+	Size   string `json:"size,omitempty" jsonschema:"full, half or small (default full); affects the reported on-page size"`
 	Mode   string `json:"mode,omitempty" jsonschema:"dark (default) or light, to match the notebook"`
 }
 
@@ -199,7 +211,7 @@ type setThemeIn struct {
 	Paper           string `json:"paper,omitempty" jsonschema:"plain, ruled, dotted or grid; default: the theme's paper"`
 	Mode            string `json:"mode,omitempty" jsonschema:"dark or light; omit to keep the current mode"`
 	Density         string `json:"density,omitempty" jsonschema:"compact, comfortable or airy; omit to keep the current spacing"`
-	Format          string `json:"format,omitempty" jsonschema:"a4 or canvas; omit to keep the current format. Blocks stay the same, only the layout changes"`
+	Format          string `json:"format,omitempty" jsonschema:"a4 or canvas; omit to keep it"`
 	ExpectedVersion *int   `json:"expected_version,omitempty" jsonschema:"Reject unless the notebook is at this version"`
 }
 
@@ -311,8 +323,12 @@ func (s *Server) register(m *mcp.Server) {
 			if err := validMode(in.Mode); err != nil {
 				return nil, NotebookInfo{}, err
 			}
+			tpl, err := templateOf(in.Template)
+			if err != nil {
+				return nil, NotebookInfo{}, err
+			}
 			if in.Density == "" {
-				in.Density = store.DefaultDensity
+				in.Density = cmp.Or(tpl.Density, store.DefaultDensity)
 			}
 			if err := validDensity(in.Density); err != nil {
 				return nil, NotebookInfo{}, err
@@ -321,7 +337,7 @@ func (s *Server) register(m *mcp.Server) {
 			if err != nil {
 				return nil, NotebookInfo{}, err
 			}
-			nb, err := s.st.CreateNotebook(userOf(ctx), in.Title, in.Theme, in.Paper, in.Mode, in.Density, folder.ID, in.Format)
+			nb, err := s.st.CreateNotebook(userOf(ctx), store.Notebook{Title: in.Title, Theme: in.Theme, Paper: in.Paper, Mode: in.Mode, Density: in.Density, FolderID: folder.ID, Template: tpl.ID, Format: in.Format})
 			if err != nil {
 				return nil, NotebookInfo{}, err
 			}
@@ -353,7 +369,7 @@ func (s *Server) register(m *mcp.Server) {
 			if err != nil {
 				return nil, Outline{}, err
 			}
-			out := Outline{NotebookID: nb.ID, Title: nb.Title, Version: nb.Version, Theme: nb.Theme, Mode: nb.Mode, Density: nb.Density, Format: nb.Format, PageCount: r.PageCount, Guidelines: nb.Guidelines, Blocks: []OutlineEntry{}}
+			out := Outline{NotebookID: nb.ID, Title: nb.Title, Version: nb.Version, Theme: nb.Theme, Mode: nb.Mode, Density: nb.Density, Format: nb.Format, PageCount: r.PageCount, Guidelines: nb.Guidelines, Template: nb.Template, Blocks: []OutlineEntry{}}
 			for _, b := range bs {
 				out.Blocks = append(out.Blocks, OutlineEntry{ID: b.ID, Type: b.Type, Page: r.Page(b.ID), Summary: b.Summary()})
 				for _, k := range b.Children() {
@@ -373,6 +389,7 @@ func (s *Server) register(m *mcp.Server) {
 			if err != nil {
 				return nil, LayoutInfo{}, err
 			}
+			r = checked(nb, bs, r)
 			return nil, LayoutInfo{Version: nb.Version, PageCount: r.PageCount, PageFill: r.PageFill, Blocks: r.Blocks, Warnings: r.Warnings}, nil
 		})
 
@@ -522,7 +539,7 @@ func (s *Server) register(m *mcp.Server) {
 			return nil, ThemesOut{Themes: layout.Themes, Papers: papers, Modes: layout.Modes, Formats: store.Formats}, nil
 		})
 
-	addTool(s, m, "set_theme", "Change a notebook's theme, paper, mode (dark or light), density (spacing) and/or format (a4 pages or one canvas). If paper is omitted, the default paper is used (dotted on a canvas, otherwise the theme's); mode, density and format stay as they are unless given. To only switch dark/light, density or format, pass the current theme too.",
+	addTool(s, m, "set_theme", "Change a notebook's theme, paper, mode (dark or light), density (spacing) and/or format. If paper is omitted, the default paper is used (dotted on a canvas); mode, density and format stay as they are unless given. To only switch dark/light, density or format, pass the current theme too.",
 		func(ctx context.Context, _ *mcp.CallToolRequest, in setThemeIn) (*mcp.CallToolResult, MutationResult, error) {
 			if err := validTheme(in.Theme); err != nil {
 				return nil, MutationResult{}, err
@@ -582,7 +599,7 @@ func (s *Server) register(m *mcp.Server) {
 			return nil, out, nil
 		})
 
-	addTool(s, m, "check_layout", "Score a notebook's layout (0-100) and list every layout issue per page with block IDs and a concrete fix. Call it before saying you are done.",
+	addTool(s, m, "check_layout", "Score a notebook's layout (0-100) and list every layout issue per page with block IDs and a concrete fix, plus missing template sections (not scored). Call it before saying you are done.",
 		func(ctx context.Context, _ *mcp.CallToolRequest, in checkIn) (*mcp.CallToolResult, CheckOut, error) {
 			nb, bs, err := s.load(ctx, in.NotebookID)
 			if err != nil {
@@ -592,7 +609,7 @@ func (s *Server) register(m *mcp.Server) {
 			if err != nil {
 				return nil, CheckOut{}, err
 			}
-			score, pages := r.Report()
+			score, pages := checked(nb, bs, r).Report()
 			if len(in.Pages) > 0 {
 				var sel []layout.PageReport
 				total := 0
@@ -635,12 +652,40 @@ func (s *Server) register(m *mcp.Server) {
 		})
 
 	addTool(s, m, "get_authoring_guide", "How to write good Folio notes: every block type with an example, and style guidance. Read it once before writing.",
-		func(ctx context.Context, _ *mcp.CallToolRequest, _ empty) (*mcp.CallToolResult, any, error) {
-			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: guide}}}, nil, nil
+		func(ctx context.Context, _ *mcp.CallToolRequest, in guideIn) (*mcp.CallToolResult, any, error) {
+			text := guide
+			if in.Template != "" {
+				tpl, err := templateOf(in.Template)
+				if err != nil {
+					return nil, nil, err
+				}
+				text = tpl.Guide()
+			}
+			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: text}}}, nil, nil
 		})
 }
 
-// defaultPaper: a canvas defaults to dotted paper (a whiteboard feel), pages to the theme's own paper.
+// templateOf resolves a template ID; "" is no template (the zero Template, which checks nothing).
+func templateOf(id templateID) (notetemplates.Template, error) {
+	if id == "" {
+		return notetemplates.Template{}, nil
+	}
+	if t, ok := notetemplates.ByID(string(id)); ok {
+		return t, nil
+	}
+	return notetemplates.Template{}, fmt.Errorf("unknown template %q; valid: %s", id, strings.Join(notetemplates.IDs(), ", "))
+}
+
+// checked adds the issues of the notebook's template (missing sections, too many pages) to r.
+func checked(nb store.Notebook, bs []model.Block, r *layout.Result) *layout.Result {
+	t, ok := notetemplates.ByID(nb.Template)
+	if !ok {
+		return r
+	}
+	return r.With(t.Check(bs, r.PageCount, r.Page))
+}
+
+// renderTiles renders numbered zoom tiles of a canvas.
 func (s *Server) renderTiles(ctx context.Context, in renderIn) (*mcp.CallToolResult, any, error) {
 	if len(in.Tiles) > 4 {
 		return nil, nil, fmt.Errorf("tiles must list 1 to 4 tile numbers, got %d", len(in.Tiles))
@@ -660,6 +705,7 @@ func (s *Server) renderTiles(ctx context.Context, in renderIn) (*mcp.CallToolRes
 	return res, nil, nil
 }
 
+// defaultPaper: a canvas defaults to dotted paper (a whiteboard feel), pages to the theme's own paper.
 func defaultPaper(theme, format string) string {
 	if format == "canvas" {
 		return "dotted"

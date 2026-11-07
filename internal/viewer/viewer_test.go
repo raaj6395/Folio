@@ -44,7 +44,7 @@ func TestViewer(t *testing.T) {
 	}
 	defer st.Close()
 	lb, _ := layout.New(home)
-	nb, _ := st.CreateNotebook(store.LocalUser, "Viewer <test>", "clean", "plain", "light", "", "", "")
+	nb, _ := st.CreateNotebook(store.LocalUser, store.Notebook{Title: "Viewer <test>", Theme: "clean", Paper: "plain", Mode: "light"})
 	addPara(t, st, nb.ID, "first")
 	srv := httptest.NewServer(New(st, lb, Local, false))
 	defer srv.Close()
@@ -187,9 +187,9 @@ func TestCanvasViewer(t *testing.T) {
 	}
 	defer st.Close()
 	lb, _ := layout.New(home)
-	nb, _ := st.CreateNotebook(store.LocalUser, "Flow", "clean", "dotted", "light", "", "", "canvas")
+	nb, _ := st.CreateNotebook(store.LocalUser, store.Notebook{Title: "Flow", Theme: "clean", Paper: "dotted", Mode: "light", Format: "canvas"})
 	addBlock(t, st, nb.ID, `{"type":"diagram","source":"direction: right\na -> b -> c -> d -> e -> f -> g -> h -> i -> j -> k -> l"}`)
-	a4, _ := st.CreateNotebook(store.LocalUser, "Pages", "clean", "plain", "light", "", "", "")
+	a4, _ := st.CreateNotebook(store.LocalUser, store.Notebook{Title: "Pages", Theme: "clean", Paper: "plain", Mode: "light"})
 	addPara(t, st, a4.ID, "x")
 	srv := httptest.NewServer(New(st, lb, Local, false))
 	defer srv.Close()

@@ -43,3 +43,22 @@ func TestWarnings(t *testing.T) {
 		t.Fatalf("page_break warning: %v", r.Warnings)
 	}
 }
+
+func TestWithLeavesCachedResultAlone(t *testing.T) {
+	r := &Result{PageCount: 1, PageFill: []float64{90}, Issues: make([]Issue, 1, 4), Warnings: make([]string, 1, 4)}
+	r.Issues[0] = Issue{Check: "cramped", Page: 1, Fix: "space it"}
+	r.Warnings[0] = r.Issues[0].String()
+	c := r.With([]Issue{{Check: "missing_section", Page: 1, Fix: "add it"}})
+	if len(r.Issues) != 1 || len(r.Warnings) != 1 || cap(r.Issues) != 4 || r.Issues[:2][1].Check != "" {
+		t.Fatalf("cached result changed: %+v", r)
+	}
+	if h := c.Hints(); len(h) != 2 || !strings.HasPrefix(h[0], "p1 missing_section") || len(c.Warnings) != 2 {
+		t.Fatalf("extra issues come first: %v %v", h, c.Warnings)
+	}
+	if s, _ := c.Report(); s != 100-int(penalty["cramped"]) {
+		t.Fatalf("checks without a penalty don't change the score: %d", s)
+	}
+	if r.With(nil) != r {
+		t.Fatal("no extra issues: same result")
+	}
+}
