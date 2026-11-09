@@ -2,3 +2,6 @@ bin/
 build/
 .DS_Store
 .env
+
+# Planning notes stay local
+*_PLAN.md

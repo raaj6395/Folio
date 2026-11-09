@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/raaj6395/folio/internal/account"
 	"github.com/raaj6395/folio/internal/layout"
 	"github.com/raaj6395/folio/internal/model"
 	"github.com/raaj6395/folio/internal/notetemplates"
@@ -59,10 +60,11 @@ var (
 )
 
 type Server struct {
-	st   *store.Store
-	lb   *layout.Builder
-	user func(*http.Request) (id, email string)
-	auth bool
+	st     *store.Store
+	lb     *layout.Builder
+	user   func(*http.Request) (id, email string)
+	auth   bool
+	visits *account.Limiter // share-link requests per IP
 }
 
 type uidKey struct{}
@@ -72,7 +74,7 @@ func uid(r *http.Request) string { return r.Context().Value(uidKey{}).(string) }
 func Local(*http.Request) (string, string) { return store.LocalUser, "" }
 
 func New(st *store.Store, lb *layout.Builder, user func(*http.Request) (id, email string), auth bool) *http.ServeMux {
-	s := &Server{st: st, lb: lb, user: user, auth: auth}
+	s := &Server{st: st, lb: lb, user: user, auth: auth, visits: account.NewLimiter(120, time.Minute)}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.require(true, s.index))
 	asset := func(path, contentType, body string) {
@@ -91,7 +93,16 @@ func New(st *store.Store, lb *layout.Builder, user func(*http.Request) (id, emai
 	mux.HandleFunc("GET /n/{id}/pdf", s.require(true, s.pdf))
 	mux.HandleFunc("GET /n/{id}/thumb.png", s.require(false, s.thumb))
 	mux.HandleFunc("GET /n/{id}/canvas.svg", s.require(false, s.svg))
+	// Share links: read-only routes for one notebook, no login. Only these GETs exist under /s/.
+	mux.HandleFunc("GET /s/{token}", s.shared(s.notebook))
+	mux.HandleFunc("GET /s/{token}/events", s.shared(s.events))
+	mux.HandleFunc("GET /s/{token}/page/{file}", s.shared(s.page))
+	mux.HandleFunc("GET /s/{token}/pdf", s.shared(s.pdf))
+	mux.HandleFunc("GET /s/{token}/thumb.png", s.shared(s.thumb))
+	mux.HandleFunc("GET /s/{token}/canvas.svg", s.shared(s.svg))
 	cop := http.NewCrossOriginProtection()
+	mux.Handle("POST /n/{id}/share", cop.Handler(s.require(false, s.share)))
+	mux.Handle("POST /n/{id}/unshare", cop.Handler(s.require(false, s.unshare)))
 	mux.Handle("POST /n/{id}/rename", cop.Handler(s.require(true, s.rename)))
 	mux.Handle("POST /n/{id}/delete", cop.Handler(s.require(true, s.del)))
 	mux.Handle("POST /n/{id}/restore", cop.Handler(s.require(true, s.restore)))
@@ -128,6 +139,72 @@ func (s *Server) require(redirect bool, h http.HandlerFunc) http.HandlerFunc {
 }
 
 type emailKey struct{}
+
+type shareKey struct{}
+
+// token is the share token the request came in through ("" for the owner's own view).
+func token(r *http.Request) string { t, _ := r.Context().Value(shareKey{}).(string); return t }
+
+// shared serves one of the read handlers for the notebook behind a share link, as its owner sees it.
+// The visitor never names a notebook: the token picks exactly one, and only read routes use this.
+func (s *Server) shared(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Robots-Tag", "noindex")
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		if !s.visits.Allow(account.ClientIP(r)) {
+			http.Error(w, "too many requests; wait a minute", http.StatusTooManyRequests)
+			return
+		}
+		t := r.PathValue("token")
+		nb, err := s.st.SharedNotebook(t)
+		if err != nil {
+			if !errors.Is(err, store.ErrNotFound) {
+				s.fail(w, err)
+				return
+			}
+			renderError(w, http.StatusNotFound, "This link doesn't work", "The owner stopped sharing this notebook, or deleted it.")
+			return
+		}
+		ctx := context.WithValue(r.Context(), uidKey{}, nb.UserID)
+		r = r.WithContext(context.WithValue(ctx, shareKey{}, t))
+		r.SetPathValue("id", nb.ID)
+		h(w, r)
+	}
+}
+
+// current re-reads the notebook; behind a share link it also checks the link is still on.
+func (s *Server) current(r *http.Request) (store.Notebook, error) {
+	if t := token(r); t != "" {
+		return s.st.SharedNotebook(t)
+	}
+	return s.st.Notebook(uid(r), r.PathValue("id"))
+}
+
+// page is what the notebook and canvas templates render.
+type page struct {
+	store.Notebook
+	Base      string // URL prefix of this notebook's routes: /n/{id} or /s/{token}
+	Shared    bool   // a visitor through a share link
+	SharePath string // the owner's share link path, "" when not shared
+}
+
+func (s *Server) share(w http.ResponseWriter, r *http.Request) {
+	t, err := s.st.Share(uid(r), r.PathValue("id"))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"path": "/s/" + t})
+}
+
+func (s *Server) unshare(w http.ResponseWriter, r *http.Request) {
+	if err := s.st.Unshare(uid(r), r.PathValue("id")); err != nil {
+		s.fail(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
 
 type State struct {
 	ID        string    `json:"id"`
@@ -408,17 +485,23 @@ func (s *Server) move(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) notebook(w http.ResponseWriter, r *http.Request) {
-	nb, err := s.st.Notebook(uid(r), r.PathValue("id"))
+	nb, err := s.current(r)
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
+	p := page{Notebook: nb, Base: "/n/" + nb.ID}
+	if t := token(r); t != "" {
+		p.Base, p.Shared = "/s/"+t, true
+	} else if nb.ShareToken != "" {
+		p.SharePath = "/s/" + nb.ShareToken
+	}
 	if nb.Format == "canvas" {
-		canvasTmpl.Execute(w, nb)
+		canvasTmpl.Execute(w, p)
 		return
 	}
-	notebookTmpl.Execute(w, nb)
+	notebookTmpl.Execute(w, p)
 }
 
 // svg serves a canvas as one SVG: the viewer zooms it without blurring, and it is the SVG download.
@@ -467,7 +550,6 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
-	id := r.PathValue("id")
 	last := -1
 	var retryAt time.Time
 	tick := time.NewTicker(500 * time.Millisecond)
@@ -475,7 +557,7 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	beat := time.NewTicker(15 * time.Second)
 	defer beat.Stop()
 	for {
-		if nb, err := s.st.Notebook(uid(r), id); err != nil {
+		if nb, err := s.current(r); err != nil {
 			fmt.Fprintf(w, "event: gone\ndata: {}\n\n")
 			fl.Flush()
 			return

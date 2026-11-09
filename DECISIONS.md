@@ -241,3 +241,15 @@
 - **Alternatives considered:** a `region` in mm (coordinates); rendering the whole canvas at 100 ppi and cropping in Go (a 5 m canvas would be ~400 MP); one tile per block (a single big diagram would still be unreadable).
 - **Tool budget:** merged with templates, `tools/list` grew 32,837 → 34,066 bytes (descriptions trimmed first; most of the rest is `canvas_mm` in the 9 write results). `TestToolListBudget` is now 34,500.
 - **Affects interface/behaviour?** yes (new optional `tiles` on render_pages; `pages` is now optional in the schema) — **User approved?** yes (asked to complete the plan, 2026-11-07)
+
+## 2026-11-09 — Read-only share links
+- **Decision:**
+  - `notebooks.share_token` (unique, NULL = not shared; migration on SQLite and Postgres). Not in snapshots, so undo never changes sharing; not copied by `folio import`. Deleting a notebook clears it; restoring does not bring it back. A disabled owner's links stop working.
+  - The token is 16 random bytes, base64url, **stored as is** (PRODUCT_PLAN P2.1 said hashed): the owner must be able to copy the link again, and a leaked database only exposes notebooks that are already public by choice. Account tokens stay hashed.
+  - `/s/{token}`, `/events`, `/page/{n}.png`, `/pdf`, `/thumb.png` and `/canvas.svg` wrap the owner's read handlers in `shared()`: the token resolves to one notebook, the owner's ID goes in the context and the path's `id` is set from the token. Visitors never name a notebook, and only these GETs exist under `/s/`. The live stream re-checks the token every tick, so stopping sharing ends open pages within ~0.5 s.
+  - Share pages send `X-Robots-Tag: noindex` and `Referrer-Policy: no-referrer`, allow 120 requests per IP per minute, hide the back link and owner menu, and show a Read-only badge and "Made with Claude + Folio".
+  - The owner turns sharing on and off from the viewer's ⋯ menu (`POST /n/{id}/share`, `/unshare`). One link per notebook; sharing again after stopping makes a new one.
+- **Why:** user request (share notes or a canvas publicly, read-only, nothing else reachable).
+- **Not built:** an MCP tool for Claude to share (making notes public should be the owner's click, and it would grow every chat's tool list), folder sharing, expiring links, link previews.
+- **Ceiling:** the limiter keys on the first `X-Forwarded-For` entry, like the login limiter, so a client can spoof it; fine at this scale.
+- **Affects interface/behaviour?** yes (new public routes, viewer menu item, dashboard label) — **User approved?** yes (approved SHARE_PLAN.md picks, 2026-11-09)

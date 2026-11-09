@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#131824">
 <title>{{.Title}} · Folio</title>
-<link rel="icon" href="/logo.svg" type="image/svg+xml">
+{{if .Shared}}<meta name="robots" content="noindex">
+{{end}}<link rel="icon" href="/logo.svg" type="image/svg+xml">
 <script>
   const notebookMode = {{.Mode}};
   let view = "";
@@ -17,9 +18,10 @@
 </head>
 <body class="canvas-view">
 <header class="bar">
-  <a class="icon-btn" href="{{if .FolderID}}/f/{{.FolderID}}{{else}}/{{end}}" title="Back to notebooks" aria-label="Back to notebooks">←</a>
+  {{if .Shared}}<a class="icon-btn" href="/" title="Made with Claude + Folio" aria-label="Folio home"><img src="/logo.svg" alt="" width="18" height="18"></a>{{else}}<a class="icon-btn" href="{{if .FolderID}}/f/{{.FolderID}}{{else}}/{{end}}" title="Back to notebooks" aria-label="Back to notebooks">←</a>{{end}}
   <button class="icon-btn" type="button" id="outlineBtn" title="Contents (o)" aria-label="Contents" aria-controls="outline" aria-expanded="false" hidden>☰</button>
   <span class="grow title" id="title">{{.Title}}</span>
+  {{if .Shared}}<span class="pill" title="You can view this {{if eq .Format "canvas"}}canvas{{else}}notebook{{end}} but not change it">Read-only</span>{{end}}
   <span class="live" id="status" role="status">Connecting…</span>
   <span class="seg" role="group" aria-label="Zoom">
     <button type="button" id="zout" title="Zoom out (−)" aria-label="Zoom out">−</button>
@@ -40,7 +42,8 @@
       </div>
       <hr>
       <button class="item" type="button" id="follow" aria-pressed="false">Follow live edits <span class="meta" id="followState">Off</span></button>
-      <a class="item" id="svgDl" href="/n/{{.ID}}/canvas.svg?download=1">Download SVG</a>
+      <a class="item" id="svgDl" href="{{.Base}}/canvas.svg?download=1">Download SVG</a>
+      {{if not .Shared}}<button class="item" type="button" id="shareBtn" data-base="{{.Base}}" data-path="{{.SharePath}}">Share link… <span class="meta" id="shareState">{{if .SharePath}}On{{else}}Off{{end}}</span></button>{{end}}
       <button class="item" type="button" id="helpBtn">Keyboard shortcuts <kbd>?</kbd></button>
       <hr>
       <div class="label">Canvas</div>
@@ -49,7 +52,7 @@
       <div class="item static">Version <span><b id="version">{{.Version}}</b> · <span id="ago"></span></span></div>
     </div>
   </details>
-  <a class="btn" id="pdf" href="/n/{{.ID}}/pdf" title="Download PDF (d)">⤓ <span class="wide-only">Download</span> PDF</a>
+  <a class="btn" id="pdf" href="{{.Base}}/pdf" title="Download PDF (d)">⤓ <span class="wide-only">Download</span> PDF</a>
 </header>
 <nav class="outline" id="outline" aria-label="Contents" hidden>
   <div class="label">Contents</div>
@@ -75,15 +78,22 @@
   </table>
   <button class="btn secondary block" type="button" data-close>Close</button>
 </dialog>
-<dialog id="gone" aria-labelledby="goneTitle">
+{{if .Shared}}<dialog id="gone" aria-labelledby="goneTitle">
+  <h2 id="goneTitle">This link no longer works</h2>
+  <p class="meta">The owner stopped sharing it, or deleted it.</p>
+  <a class="btn block" href="/">Made with Claude + Folio</a>
+</dialog>
+<a class="made" href="/">Made with Claude + Folio</a>
+{{else}}<dialog id="gone" aria-labelledby="goneTitle">
   <h2 id="goneTitle">This canvas was deleted</h2>
   <p class="meta">It no longer exists, so there's nothing more to show here.</p>
   <a class="btn block" href="/">Back to notebooks</a>
-</dialog>
+</dialog>{{end}}
 
 <script src="/app.js"></script>
 <script>
 const id = {{.ID}};
+const base = {{.Base}};
 const root = document.documentElement;
 const $ = (s) => document.getElementById(s);
 const stage = $("stage"), board = $("board");
@@ -260,7 +270,7 @@ function apply(s) {
     root.dataset.auto = s.mode;
     folio.applyView();
   }
-  $("pdf").href = "/n/" + id + "/pdf" + q();
+  $("pdf").href = base + "/pdf" + q();
   updatedAt = new Date(s.updated_at);
   tick();
   natW = s.canvas_mm[0] * PX_PER_MM;
@@ -270,7 +280,7 @@ function apply(s) {
   if (s.pages[0] !== sig) {
     const updated = sig !== "";
     sig = s.pages[0];
-    load("/n/" + id + "/canvas.svg?v=" + sig + (view ? "&mode=" + view : ""));
+    load(base + "/canvas.svg?v=" + sig + (view ? "&mode=" + view : ""));
     if (updated && changed && follow) panTo(changed);
     else if (updated && changed) folio.toast("The canvas was updated", { label: "Show me", run: () => panTo(changed) }, "update");
     else if (updated) folio.toast("The canvas was updated", null, "update");
@@ -287,12 +297,12 @@ setInterval(tick, 15000);
 function connect() {
   if (es) es.close();
   sig = "";
-  es = new EventSource("/n/" + id + "/events" + q());
+  es = new EventSource(base + "/events" + q());
   es.onopen = () => setStatus("Live", "on");
   es.onerror = () => setStatus(navigator.onLine ? "Reconnecting…" : "Offline", "off");
   es.onmessage = (e) => apply(JSON.parse(e.data));
   es.addEventListener("gone", () => {
-    setStatus("Deleted", "off");
+    setStatus(base.startsWith("/s/") ? "Link off" : "Deleted", "off");
     es.close();
     $("gone").showModal();
   });

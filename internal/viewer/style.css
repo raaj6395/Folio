@@ -319,3 +319,9 @@ dialog.lightbox img { display: block; width: 910px; max-width: none; margin: 24p
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition: none !important; }
 }
+
+/* Share links */
+.share-row { display: flex; gap: 8px; margin: 4px 0 16px; }
+.share-row input { flex: 1; min-width: 0; }
+.made { position: fixed; right: 12px; bottom: 10px; z-index: 5; padding: 4px 10px; border-radius: 999px; background: var(--surface); border: 1px solid var(--border); color: var(--muted); font-size: 12px; box-shadow: var(--shadow); }
+.made:hover { color: var(--ink); text-decoration: none; }

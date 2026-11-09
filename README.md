@@ -43,6 +43,9 @@
 | 📄 **Real pages, not chat text** | Notes come out as typeset A4 pages, ready to print, annotate on an iPad, or study from. |
 | 🧠 **Built for studying** | Definition and key-point boxes, comparison tables, diagrams, self-test Q&A cards and fill-in blanks with real ruled lines. |
 | 🗺️ **A canvas for big diagrams** | Flowcharts, architecture maps and mind maps go on one sheet that grows to fit, at full size. Pan and zoom in the viewer; download it as SVG or PDF. |
+| 🧩 **The right shape for each note** | Nine note templates (DSA problem, pattern, code solution, article, lecture, comparison, cheat sheet, system design, topic). Claude picks one from your request and Folio checks no section is missing. |
+| 🗂️ **Folders** | Organise notebooks into folders (3 levels deep), favourite them, and tell Claude where to file new notes. |
+| 🔗 **Share a read-only link** | Turn on a link for one notebook or canvas. Anyone with it can watch it live, with no login, but can't edit it or see your other notes. |
 | 📐 **Layout that checks itself** | Folio measures every page and tells Claude what's wrong (cramped spacing, half-empty pages, oversized diagrams) along with how to fix it, so you don't have to send corrections. |
 | 👀 **Watch it being written** | A live viewer updates each page the moment Claude changes it. |
 | ↩️ **Nothing is ever lost** | Every change is a version. "Undo that" or "go back to version 4" just works. |
@@ -125,6 +128,32 @@ Folio keeps boxes, tables, code and diagrams from splitting awkwardly across pag
   | `?` | Show all shortcuts |
 - **Your appearance, your choice:** view any notebook in dark or light without changing the notebook itself.
 
+### Note templates
+
+Each kind of note has a blueprint: the sections it needs, rules, and a checklist. Claude picks it from your request (*"notes on LeetCode 1, Two Sum"* → **DSA problem**) and tells you which one it used. If a required section is missing (say a DSA problem with no **Complexity**), Folio flags it after the write so Claude adds it. The dashboard shows each notebook's template as a label, and search matches it.
+
+| Template | For |
+|---|---|
+| DSA problem / DSA pattern / Code solution | One problem, a reusable technique, or a worked code answer |
+| Article / Lecture / Topic | Summarising something you read or watched, or a general topic |
+| Comparison / Cheat sheet / System design | X vs Y, a dense 1–2 page reference, or a design with its trade-offs |
+
+### Canvas
+
+Ask for a flowchart, architecture map or mind map and Claude puts it on a **canvas**: one sheet that grows to fit, so diagrams stay at full size instead of being shrunk onto A4. In the viewer you drag to pan, scroll or pinch to zoom, and **Follow live edits** pans to whatever Claude just changed. Download it as SVG or PDF. *"Turn my TCP notes into a canvas"* switches an existing notebook, and undo switches it back.
+
+### Folders
+
+Folders go up to 3 levels deep (*Semester 1 / Networks / Labs*), with colours and favourites. Drag notebooks between folders, or move several at once. Tell Claude *"file these under Semester 1/Networks"* and it creates the folder if needed.
+
+### Share a read-only link
+
+In a notebook, open **⋯ → Share link… → Create link** and copy the URL.
+- **Visitors need no account.** They see that notebook or canvas live, can zoom and download the PDF, and nothing else: no library, no other notes, no editing.
+- **Stop sharing** turns the link off at once, even for anyone who has it open. Sharing again makes a new link, so the old one stays dead.
+- Deleting a notebook turns its link off. Shared notebooks show a **Shared** label on the dashboard.
+- Links are kept out of search engines.
+
 ### Edit by asking
 
 - *"Add a comparison table of HTTP methods after the methods section."*
@@ -135,7 +164,7 @@ Folio keeps boxes, tables, code and diagrams from splitting awkwardly across pag
 
 ### Private and simple to connect
 
-- **Accounts:** sign up with email and password. Your notebooks are visible only to you.
+- **Accounts:** sign up with email and password. Your notebooks are visible only to you, unless you turn on a share link for one.
 - **One-click connect:** Claude signs in through Folio's own login page (OAuth), the same way it connects to Google Drive. There's no key to copy.
 - **Stay in control:** the **Connect Claude** page lists every connected app with a **Disconnect** button. Personal access tokens are available for scripts.
 
@@ -165,6 +194,8 @@ Then run `/mcp` in Claude Code, pick **folio**, choose **Authenticate**, and app
 - *"Explain the TCP handshake with a sequence diagram, then 3 self-test questions."*
 - *"Make the Kafka notes use the notebook theme on ruled paper."*
 - *"Draw our whole checkout flow as a canvas, with the failure paths."*
+- *"Make notes on LeetCode 1, Two Sum, and file them under DSA/Arrays."*
+- *"Compare REST and GraphQL."* (uses the comparison template)
 
 > 💡 **Printing?** Ask for **light mode** first. Dark pages look great on screen but use a lot of ink.
 
@@ -188,7 +219,6 @@ Every push to `main` redeploys, and your notebooks stay safe in Postgres.
 > ⚠️ **About free tiers:**
 > - Folio typesets on the server, which needs real CPU. On Render's **Free** instance (0.1 CPU), writes take many seconds and long notebooks can time out. It also sleeps after 15 minutes idle and takes about a minute to wake. **Starter or Standard is recommended.**
 > - Render's free Postgres **expires after 30 days**.
-> - Measurements and a speed plan are in [PERFORMANCE_PLAN.md](PERFORMANCE_PLAN.md).
 
 <details>
 <summary><b>Settings</b></summary>
@@ -276,11 +306,14 @@ No. Your text reaches the typesetter only as data, never as code, so nothing ins
 - [x] Accounts, private notebooks, one-click OAuth connect for the Claude app and Claude Code
 - [x] Redesigned dashboard and viewer: previews, contents sidebar, live updates, shortcuts
 - [x] Built-in layout rules, layout checks and score, spacing modes, per-notebook style rules
-- [ ] **Speed:** faster rendering and fewer round trips ([plan](PERFORMANCE_PLAN.md))
+- [x] **Speed:** one Typst run per edit, unchanged page images reused
+- [ ] **Speed:** fewer round trips
 - [ ] Version history panel in the viewer, with one-click restore
-- [ ] Read-only share links
 - [x] Folders (and Claude files notes into them)
-- [x] **Canvas:** one big sheet instead of A4 pages for flowcharts, architecture maps and mind maps, with pan and zoom ([plan](CANVAS_PLAN.md))
+- [x] Note templates: nine blueprints, picked by Claude and checked by Folio
+- [x] **Canvas:** one big sheet instead of A4 pages for flowcharts, architecture maps and mind maps, with pan and zoom
+- [x] Read-only share links
+- [ ] Open a canvas in Excalidraw to edit it by hand ([evaluation](CANVAS_EVALUATION.md))
 - [ ] Search inside notebooks
 - [ ] Install on your phone's home screen
 - [ ] Anki export from Q&A cards; Cornell and flashcard note styles
@@ -311,14 +344,15 @@ No. Your text reaches the typesetter only as data, never as code, so nothing ins
 
 | Group | Tools |
 |---|---|
-| Notebooks | `list_notebooks`, `create_notebook` (A4 or canvas), `rename_notebook`, `delete_notebook`, `set_theme` (theme, paper, mode, density, format), `list_themes` |
+| Notebooks | `list_notebooks`, `create_notebook` (A4 or canvas, template, folder), `rename_notebook`, `delete_notebook`, `set_theme` (theme, paper, mode, density, format), `list_themes` |
+| Folders | `list_folders`, `move_notebook` |
 | Preferences | `set_notebook_guidelines`, `get_notebook_guidelines` |
 | Reading | `get_outline`, `read_blocks`, `get_layout_info` |
 | Writing | `append_blocks`, `insert_blocks`, `update_block`, `delete_blocks`, `move_blocks` |
-| Checking | `check_layout`, `render_pages`, `preview_diagram` |
+| Checking | `check_layout`, `render_pages` (pages, or zoomed tiles of a canvas), `preview_diagram` |
 | History | `list_versions`, `undo`, `restore_version` |
 | Output | `export_pdf`, `get_viewer_url` |
-| Help | `get_authoring_guide` (also the resource `folio://guide`) |
+| Help | `get_authoring_guide` (also the resource `folio://guide`; pass `template` for one blueprint) |
 
 ### Build and test
 
@@ -338,6 +372,7 @@ The tests guard:
 - pagination rules and every layout check (each with a case that triggers it and one that doesn't);
 - undo and restore, on both databases;
 - an account isolation matrix that fails if any new tool skips the ownership check;
+- share links: one notebook only, read-only, and dead the moment sharing stops;
 - OAuth flows that behave like the real Claude clients;
 - CSRF protection, and that tokens never appear in logs.
 
@@ -352,7 +387,8 @@ internal/diagram/     D2 → SVG with theme fonts
 internal/mcpserver/   MCP tools, server instructions, authoring guide and layout rules
 internal/account/     sign-up, login, Connect page, OAuth 2.1 server
 internal/httpserver/  /mcp, /healthz, security headers, wiring
-internal/viewer/      dashboard and live viewer (SSE)
+internal/notetemplates/ the note templates and their section checks
+internal/viewer/      dashboard, live viewer (SSE), canvas viewer, share links
 templates/            the Typst template and themes
 fonts/                bundled OFL fonts (Inter, JetBrains Mono, Kalam)
 ```

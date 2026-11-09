@@ -1,7 +1,9 @@
 package store
 
 import (
+	"crypto/rand"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -128,6 +130,8 @@ var pgMigrations = []string{
 	`ALTER TABLE notebooks ADD COLUMN template TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE notebooks ADD COLUMN format TEXT NOT NULL DEFAULT 'a4';
 	ALTER TABLE snapshots ADD COLUMN format TEXT`,
+	`ALTER TABLE notebooks ADD COLUMN share_token TEXT;
+	CREATE UNIQUE INDEX notebooks_share ON notebooks(share_token)`,
 }
 
 var migrations = []string{
@@ -243,6 +247,8 @@ var migrations = []string{
 	`ALTER TABLE notebooks ADD COLUMN template TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE notebooks ADD COLUMN format TEXT NOT NULL DEFAULT 'a4';
 	ALTER TABLE snapshots ADD COLUMN format TEXT`,
+	`ALTER TABLE notebooks ADD COLUMN share_token TEXT;
+	CREATE UNIQUE INDEX notebooks_share ON notebooks(share_token)`,
 }
 
 const LocalUser = "u_local"
@@ -282,6 +288,7 @@ type Notebook struct {
 	Favorite   bool      `json:"-"`
 	Template   string    `json:"-"`
 	Format     string    `json:"format"`
+	ShareToken string    `json:"-"` // "" = not shared; never sent to Claude
 }
 
 const (
@@ -419,16 +426,16 @@ type scanner interface{ Scan(...any) error }
 func scanNotebook(r scanner) (Notebook, error) {
 	var nb Notebook
 	var c, u string
-	var owner, folder, fav sql.NullString
-	err := r.Scan(&nb.ID, &nb.Title, &nb.Theme, &nb.Paper, &c, &u, &nb.Version, &nb.Mode, &owner, &nb.Guidelines, &nb.Density, &folder, &fav, &nb.Template, &nb.Format)
+	var owner, folder, fav, share sql.NullString
+	err := r.Scan(&nb.ID, &nb.Title, &nb.Theme, &nb.Paper, &c, &u, &nb.Version, &nb.Mode, &owner, &nb.Guidelines, &nb.Density, &folder, &fav, &nb.Template, &nb.Format, &share)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nb, ErrNotFound
 	}
-	nb.CreatedAt, nb.UpdatedAt, nb.UserID, nb.FolderID, nb.Favorite = parseTS(c), parseTS(u), owner.String, folder.String, fav.Valid
+	nb.CreatedAt, nb.UpdatedAt, nb.UserID, nb.FolderID, nb.Favorite, nb.ShareToken = parseTS(c), parseTS(u), owner.String, folder.String, fav.Valid, share.String
 	return nb, err
 }
 
-const nbCols = `id, title, theme, paper, created_at, updated_at, version, mode, user_id, guidelines, density, folder_id, favorite_at, template, format`
+const nbCols = `id, title, theme, paper, created_at, updated_at, version, mode, user_id, guidelines, density, folder_id, favorite_at, template, format, share_token`
 
 // CreateNotebook makes an empty notebook from nb's title, theme, paper, mode, density,
 // folder ("" = top level), template and format ("" = a4); IDs, timestamps and the version are set here.
@@ -466,7 +473,7 @@ func (s *Store) CreateNotebook(userID string, nb Notebook) (Notebook, error) {
 		}
 	}
 	folder := sql.NullString{String: nb.FolderID, Valid: nb.FolderID != ""}
-	if _, err := tx.Exec(s.q(`INSERT INTO notebooks (`+nbCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,?)`), nb.ID, nb.Title, nb.Theme, nb.Paper, ts(now), ts(now), 1, nb.Mode, userID, nb.Guidelines, nb.Density, folder, nb.Template, nb.Format); err != nil {
+	if _, err := tx.Exec(s.q(`INSERT INTO notebooks (`+nbCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,?,NULL)`), nb.ID, nb.Title, nb.Theme, nb.Paper, ts(now), ts(now), 1, nb.Mode, userID, nb.Guidelines, nb.Density, folder, nb.Template, nb.Format); err != nil {
 		return nb, err
 	}
 	if err := s.snapshot(tx, nb, nil, 1, "create_notebook", "created notebook"); err != nil {
@@ -497,7 +504,8 @@ func (s *Store) Notebooks(userID string) ([]Notebook, error) {
 }
 
 func (s *Store) Delete(userID, id string) error {
-	res, err := s.db.Exec(s.q(`UPDATE notebooks SET deleted_at = ? WHERE id = ? AND user_id = ? AND deleted_at IS NULL`), ts(time.Now()), id, userID)
+	// Deleting also stops sharing; restoring does not bring the old link back.
+	res, err := s.db.Exec(s.q(`UPDATE notebooks SET deleted_at = ?, share_token = NULL WHERE id = ? AND user_id = ? AND deleted_at IS NULL`), ts(time.Now()), id, userID)
 	if err != nil {
 		return err
 	}
@@ -505,6 +513,40 @@ func (s *Store) Delete(userID, id string) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+// Share turns on the notebook's public read-only link and returns its token (the existing one if already shared).
+// The token is stored as is, not hashed, so the owner can copy the link again; it only exposes this notebook.
+func (s *Store) Share(userID, id string) (string, error) {
+	buf := make([]byte, 16)
+	rand.Read(buf)
+	token := base64.RawURLEncoding.EncodeToString(buf)
+	if _, err := s.db.Exec(s.q(`UPDATE notebooks SET share_token = ? WHERE id = ? AND user_id = ? AND deleted_at IS NULL AND share_token IS NULL`), token, id, userID); err != nil {
+		return "", err
+	}
+	nb, err := s.Notebook(userID, id)
+	return nb.ShareToken, err
+}
+
+// Unshare turns the link off; sharing again makes a new token, so old links stay dead.
+func (s *Store) Unshare(userID, id string) error {
+	res, err := s.db.Exec(s.q(`UPDATE notebooks SET share_token = NULL WHERE id = ? AND user_id = ? AND deleted_at IS NULL`), id, userID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// SharedNotebook resolves a share token to its notebook, whose owner must not be disabled.
+func (s *Store) SharedNotebook(token string) (Notebook, error) {
+	if token == "" {
+		return Notebook{}, ErrNotFound
+	}
+	return scanNotebook(s.db.QueryRow(s.q(`SELECT `+nbCols+` FROM notebooks WHERE share_token = ? AND deleted_at IS NULL
+		AND user_id IN (SELECT id FROM users WHERE disabled_at IS NULL)`), token))
 }
 
 func (s *Store) Undelete(userID, id string) error {

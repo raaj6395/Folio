@@ -141,6 +141,61 @@
     show(btns.some((b) => b.dataset.tab === saved) ? saved : btns[0].dataset.tab);
   });
 
+  // Owner's "Share link…" item on a notebook page: turns the public read-only link on or off.
+  const shareBtn = document.getElementById("shareBtn");
+  if (shareBtn) {
+    const d = document.createElement("dialog");
+    d.setAttribute("aria-labelledby", "shareTitle");
+    d.innerHTML = '<h2 id="shareTitle">Share link</h2>' +
+      '<p class="meta">Anyone with the link can view this, with live updates. They can\'t edit it or see your other notes.</p>' +
+      '<div data-on><div class="share-row"><input type="text" id="shareUrl" readonly aria-label="Share link"><button class="btn" type="button" id="shareCopy">Copy</button></div>' +
+      '<div class="actions"><button class="btn secondary" type="button" id="shareStop">Stop sharing</button><button class="btn secondary" type="button" data-close>Done</button></div></div>' +
+      '<div data-off class="actions"><button class="btn secondary" type="button" data-close>Cancel</button><button class="btn" type="button" id="shareMake">Create link</button></div>';
+    document.body.append(d);
+    folio.enhance(d);
+    const el = (id) => d.querySelector("#" + id);
+    let armed = false;
+    const show = (path) => {
+      shareBtn.dataset.path = path;
+      document.getElementById("shareState").textContent = path ? "On" : "Off";
+      d.querySelector("[data-on]").hidden = !path;
+      d.querySelector("[data-off]").hidden = !!path;
+      el("shareUrl").value = path ? location.origin + path : "";
+      el("shareStop").textContent = "Stop sharing";
+      armed = false;
+    };
+    const post = (what) => fetch(shareBtn.dataset.base + "/" + what, { method: "POST" }).then((r) => {
+      if (!r.ok) throw new Error(r.statusText);
+      return r;
+    });
+    el("shareMake").onclick = () => post("share").then((r) => r.json()).then((j) => {
+      show(j.path);
+      el("shareUrl").select();
+    }, () => folio.toast("Couldn't create the link. Try again."));
+    el("shareCopy").onclick = () => navigator.clipboard.writeText(el("shareUrl").value).then(() => {
+      el("shareCopy").textContent = "Copied ✓";
+      setTimeout(() => (el("shareCopy").textContent = "Copy"), 1500);
+    }, () => {
+      el("shareUrl").select();
+      folio.toast("Press Ctrl+C (⌘C on Mac) to copy");
+    });
+    el("shareStop").onclick = () => {
+      if (!armed) {
+        armed = true;
+        el("shareStop").textContent = "Click again: the link will stop working";
+        return;
+      }
+      post("unshare").then(() => {
+        show("");
+        folio.toast("Sharing stopped. The old link no longer works.");
+      }, () => folio.toast("Couldn't stop sharing. Try again."));
+    };
+    shareBtn.onclick = () => {
+      show(shareBtn.dataset.path);
+      d.showModal();
+    };
+  }
+
   const closeMenus = (except) => document.querySelectorAll("details.menu[open]").forEach((m) => { if (m !== except) m.open = false; });
   document.addEventListener("click", (e) => closeMenus(e.target.closest("details.menu")));
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenus(); });

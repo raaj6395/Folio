@@ -387,7 +387,7 @@ init();
     </form>
     <div class="body">
       <a class="t" href="/n/{{.ID}}">{{.Title}}</a>
-      <div class="foot">{{if eq .Format "canvas"}}<span class="pill" title="One big sheet instead of A4 pages">Canvas</span>{{end}}{{with .Kind}}<span class="pill" title="Template">{{.}}</span>{{end}}{{if .Path}}<span class="pill" title="Folder">{{.Path}}</span>{{else}}<span class="pill">{{.Theme}}</span><span class="pill">{{.Mode}}</span>{{end}}<time class="meta" datetime="{{.UpdatedAt.UTC.Format "2006-01-02T15:04:05Z07:00"}}">{{.UpdatedAt.Format "2 Jan 2006"}}</time></div>
+      <div class="foot">{{if .ShareToken}}<span class="pill" title="Anyone with the link can view it">Shared</span>{{end}}{{if eq .Format "canvas"}}<span class="pill" title="One big sheet instead of A4 pages">Canvas</span>{{end}}{{with .Kind}}<span class="pill" title="Template">{{.}}</span>{{end}}{{if .Path}}<span class="pill" title="Folder">{{.Path}}</span>{{else}}<span class="pill">{{.Theme}}</span><span class="pill">{{.Mode}}</span>{{end}}<time class="meta" datetime="{{.UpdatedAt.UTC.Format "2006-01-02T15:04:05Z07:00"}}">{{.UpdatedAt.Format "2 Jan 2006"}}</time></div>
     </div>
     <details class="menu">
       <summary class="icon-btn" aria-label="Actions for {{.Title}}" title="Actions">⋯</summary>
