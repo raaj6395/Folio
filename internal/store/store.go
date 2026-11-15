@@ -260,7 +260,7 @@ var (
 )
 
 var (
-	MaxNotebooks = 100
+	MaxNotebooks = 1000
 	MaxBlocks    = 2000
 )
 
