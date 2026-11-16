@@ -264,6 +264,7 @@
   - `wrong_cell` is a grid edge that crosses another cell before its target. Folio can't know which cell was meant, so "points at the wrong cell" means it visibly reads that way.
   - Diagonal edges aren't flagged: there's no way to know straight lines were wanted. Each edge reports `axis_aligned` instead.
   - `aspect_extreme` for narrowness needs a portrait diagram under a third of its column. A small wide diagram is fine, and "too tall" stays `oversized_diagram` (reported as `aspect_extreme`).
+  - Sequence-diagram messages (`sequence: true`) skip the end-point and through-node checks: they run between lifelines, away from the actor boxes (found on the kitchen sink).
   - `label_overflow` also covers an edge label longer than its edge, which hides the line. On the real "Minimum Path Sum" grid, the labels in 30-unit gaps hide every arrow.
 - **Opt-in:**
   - Writes and `get_layout_info` are unchanged, except the new `wide_code` issue, which sits next to `wide_table`.
