@@ -57,6 +57,10 @@ type Result struct {
 	CanvasWMM    float64       `json:"canvas_w_mm,omitempty"`
 	CanvasHMM    float64       `json:"canvas_h_mm,omitempty"`
 	Elapsed      time.Duration `json:"-"`
+	// For inspect_render and check_layout only; writes and get_layout_info don't show them.
+	Boxes    []BlockBox `json:"boxes,omitempty"`
+	Diagrams []Placed   `json:"diagrams,omitempty"`
+	Findings []Finding  `json:"findings,omitempty"`
 }
 
 func (r *Result) LastPageFreeMM() float64 {
@@ -228,7 +232,7 @@ func (b *Builder) build(ctx context.Context, nb store.Notebook, blocks []model.B
 		return nil, err
 	}
 	canvas := nb.Format == "canvas"
-	docs, dwarns, err := b.docBlocks(ctx, dir, th.D2For(nb.Mode), blocks, canvas)
+	docs, dwarns, geoms, err := b.docBlocks(ctx, dir, th.D2For(nb.Mode), blocks, canvas)
 	if err != nil {
 		return nil, err
 	}
@@ -247,7 +251,7 @@ func (b *Builder) build(ctx context.Context, nb store.Notebook, blocks []model.B
 	if err := os.WriteFile(filepath.Join(dir, "doc.json"), js, 0o644); err != nil {
 		return nil, err
 	}
-	raw, err := b.typst(ctx, dir, "eval", `query(<blockpos>).map(it => (id: it.value.id, k: it.value.k, page: it.location().page(), y: it.location().position().y / 1pt, x: it.location().position().x / 1pt, need: it.value.at("need", default: 0), have: it.value.at("have", default: 0)))`, "--in", "main.typ")
+	raw, err := b.typst(ctx, dir, "eval", `query(<blockpos>).map(it => (id: it.value.id, k: it.value.k, page: it.location().page(), y: it.location().position().y / 1pt, x: it.location().position().x / 1pt, need: it.value.at("need", default: 0), have: it.value.at("have", default: 0), pt: it.value.at("pt", default: 0), w: it.value.at("w", default: 0), lines: it.value.at("lines", default: 0), widest: it.value.at("widest", default: 0)))`, "--in", "main.typ")
 	if err != nil {
 		return nil, err
 	}
@@ -261,6 +265,7 @@ func (b *Builder) build(ctx context.Context, nb store.Notebook, blocks []model.B
 	} else {
 		r = analyze(marks, blocks, nb.Density)
 	}
+	inspectLayout(r, marks, blocks, geoms, canvas)
 	for _, is := range dwarns {
 		is.Page = r.Page(is.Blocks[0])
 		r.Issues = append(r.Issues, is)

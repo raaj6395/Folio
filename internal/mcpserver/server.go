@@ -49,7 +49,7 @@ Workflow:
 1. get_authoring_guide (with template when the note fits one) if you haven't, then create_notebook (or list_notebooks).
 2. Write a whole section per append_blocks call.
 3. Read each write's layout, warnings and layout_hints; fix issues before moving on.
-4. Before saying done: check_layout, fix what it reports, then render_pages once on the changed pages (max 2). In your reply, name the template you used in one line.
+4. Before saying done: check_layout, fix what it reports, then render_pages once on the changed pages (max 2); if you can't see images, use inspect_render instead and fix its findings (at most 3 rounds). In your reply, name the template you used in one line.
 5. The user's notebook_guidelines (get_outline, first write response, get_notebook_guidelines) override these rules; save lasting preferences with set_notebook_guidelines.`
 
 //go:embed guide.md

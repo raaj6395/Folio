@@ -349,7 +349,7 @@ No. Your text reaches the typesetter only as data, never as code, so nothing ins
 | Preferences | `set_notebook_guidelines`, `get_notebook_guidelines` |
 | Reading | `get_outline`, `read_blocks`, `get_layout_info` |
 | Writing | `append_blocks`, `insert_blocks`, `update_block`, `delete_blocks`, `move_blocks` |
-| Checking | `check_layout`, `render_pages` (pages, or zoomed tiles of a canvas), `preview_diagram` |
+| Checking | `check_layout`, `render_pages` (pages, or zoomed tiles of a canvas), `inspect_render` (the render as text: boxes, diagram nodes/edges, ASCII maps, geometry findings; for clients that can't see images), `preview_diagram` |
 | History | `list_versions`, `undo`, `restore_version` |
 | Output | `export_pdf`, `get_viewer_url` |
 | Help | `get_authoring_guide` (also the resource `folio://guide`; pass `template` for one blueprint) |

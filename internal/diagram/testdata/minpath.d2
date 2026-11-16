@@ -1,0 +1,19 @@
+g: "" {
+  grid-rows: 3
+  grid-columns: 3
+  grid-gap: 30
+  c00: "(0,0)\nstart" {style.fill: "#2e7d32"; style.font-color: "#ffffff"; style.bold: true}
+  c01: "(i-1, j)"
+  c02: " "
+  c10: "(i, j-1)"
+  c11: "(i, j)" {style.fill: "#f9a825"; style.bold: true}
+  c12: " "
+  c20: " "
+  c21: " "
+  c22: "(m-1, n-1)\nend" {style.fill: "#c62828"; style.font-color: "#ffffff"; style.bold: true}
+  c00 -> c01: "path 1"
+  c00 -> c10: "path 2"
+  c01 -> c11: "from top"
+  c10 -> c11: "from left"
+  c11 -> c22: "dp[i][j] = min cost (i,j) → end" {style.stroke-width: 3; style.bold: true}
+}

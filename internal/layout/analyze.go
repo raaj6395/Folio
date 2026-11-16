@@ -12,13 +12,17 @@ import (
 const contentBottomMM = pageHeightMM - marginTopMM
 
 type mark struct {
-	ID   string  `json:"id"`
-	K    string  `json:"k"`
-	Page int     `json:"page"`
-	Y    float64 `json:"y"`
-	X    float64 `json:"x"`
-	Need float64 `json:"need"` // k "w": a table's narrowest width and the width it has, in pt
-	Have float64 `json:"have"`
+	ID     string  `json:"id"`
+	K      string  `json:"k"`
+	Page   int     `json:"page"`
+	Y      float64 `json:"y"`
+	X      float64 `json:"x"`
+	Need   float64 `json:"need"` // k "w" (table), "code": the narrowest width and the width it has, in pt
+	Have   float64 `json:"have"`
+	Pt     float64 `json:"pt"`     // k "s": font size at the block's start
+	W      float64 `json:"w"`      // k "img": a diagram image's width in pt
+	Lines  int     `json:"lines"`  // k "code"
+	Widest float64 `json:"widest"` // k "code": the widest line, unwrapped, in pt
 }
 
 func round1(f float64) float64 { return float64(int(f*10+0.5)) / 10 }
@@ -50,7 +54,7 @@ func analyze(marks []mark, blocks []model.Block, density string) *Result {
 			endPage, endY = m.Page, mm
 			continue
 		}
-		if m.K == "w" {
+		if m.K != "s" && m.K != "e" {
 			continue
 		}
 		i, ok := idx[m.ID]
@@ -91,16 +95,21 @@ func analyze(marks []mark, blocks []model.Block, density string) *Result {
 	return r
 }
 
-// wideIssues reports tables whose columns can't fit the width they have, even fully wrapped.
+// wideIssues reports tables whose columns can't fit the width they have, even fully wrapped,
+// and code with a token too long to wrap.
 func wideIssues(marks []mark, r *Result) []Issue {
 	var is []Issue
 	for _, m := range marks {
-		if m.K != "w" {
-			continue
+		switch {
+		case m.K == "w":
+			is = append(is, Issue{"wide_table", r.Page(m.ID), []string{m.ID},
+				fmt.Sprintf("table %s needs at least %.0fmm but only %.0fmm fits, so its columns overlap", m.ID, m.Need*25.4/72, m.Have*25.4/72),
+				"drop or merge columns, or shorten long words and headers"})
+		case m.K == "code" && m.Need > m.Have+1:
+			is = append(is, Issue{"wide_code", r.Page(m.ID), []string{m.ID},
+				fmt.Sprintf("code %s has a token %.0fmm wide in a %.0fmm box: it runs past the edge and is cut off", m.ID, m.Need*25.4/72, m.Have*25.4/72),
+				"break the long line with spaces or a line break, or shorten the identifier/string"})
 		}
-		is = append(is, Issue{"wide_table", r.Page(m.ID), []string{m.ID},
-			fmt.Sprintf("table %s needs at least %.0fmm but only %.0fmm fits, so its columns overlap", m.ID, m.Need*25.4/72, m.Have*25.4/72),
-			"drop or merge columns, or shorten long words and headers"})
 	}
 	return is
 }

@@ -104,5 +104,18 @@ A canvas is one sheet with no pages, for content that is mostly a picture: flowc
 - Folio keeps short lists (under a quarter page), callouts, tables, code, Q&A, fill-ins and diagrams on one page when they fit, and keeps headings with what follows. Use `page_break` to start H1 sections on a new page, not to patch splits.
 - `get_layout_info` gives per-page fill and block positions without images.
 - `render_pages` (1–4 pages, default 80 ppi) shows the actual pages. Render the changed pages once at the end.
+
+### When you can't see images (voice, text-only clients)
+`inspect_render` describes the render as text: each block's box in mm (page, x, y, w, h, font size; code line count and widest line), each diagram's nodes and edges with an ASCII map, and findings with a fix. It runs the same layout checks as `check_layout`, plus geometry ones:
+- `node_overlap`, `edge_through_node`, `wrong_cell` (a grid edge crosses another cell first), `edge_misroute` (an end isn't on its node), `off_canvas`, `block_overlap`, `clipped` (a table or code too wide): errors.
+- `label_overflow` (a label outside its node, over another node or label, or longer than its edge so it hides the line), `tiny_text` (under 6pt), `edge_crossing` (more than 2), `empty_cell` (a highlighted grid cell with no text), `aspect_extreme`, plus `page_overflow`, `orphan_heading`, `under_filled`.
+
+The loop, at most 3 rounds:
+1. Write or update the block.
+2. `inspect_render` with `pages` (or `block_ids`) of what changed. `detail: "full"` adds every coordinate.
+3. Fix every finding (diagram findings name the node or edge ID).
+4. Repeat until there are none.
+
+`preview_diagram` returns the same findings and ASCII map for D2 source before you insert it. `render_pages` with `include_geometry: true` adds the summary next to the images.
 - Edit with `update_block`, `insert_blocks`, `move_blocks`, `delete_blocks` using IDs from `get_outline`. `undo` reverts the last change.
 - `get_viewer_url` gives a link where the user can watch pages update live.

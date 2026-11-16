@@ -176,6 +176,14 @@ type renderIn struct {
 	Pages      []int  `json:"pages,omitempty" jsonschema:"1-indexed page numbers to render, max 4 per call; a canvas has only page 1"`
 	Tiles      []int  `json:"tiles,omitempty" jsonschema:"Canvas only: up to 4 zoomed-in tiles, numbered as the overview says"`
 	PPI        int    `json:"ppi,omitempty" jsonschema:"Resolution in pixels per inch; default 80 (enough to judge layout), max 150"`
+	Geometry   bool   `json:"include_geometry,omitempty" jsonschema:"Also return the inspect_render summary of these pages"`
+}
+
+type inspectIn struct {
+	NotebookID string   `json:"notebook_id" jsonschema:"ID of the notebook"`
+	Pages      []int    `json:"pages,omitempty" jsonschema:"1-indexed pages; default all"`
+	BlockIDs   []string `json:"block_ids,omitempty" jsonschema:"Only these blocks (a two_column includes its children)"`
+	Detail     string   `json:"detail,omitempty" jsonschema:"summary (default): findings, ASCII maps, a line per block; full: every coordinate"`
 }
 
 type exportIn struct {
@@ -442,7 +450,25 @@ func (s *Server) register(m *mcp.Server) {
 			for i, png := range pngs {
 				res.Content = append(res.Content, &mcp.TextContent{Text: fmt.Sprintf("Page %d (%s):", in.Pages[i], label)}, &mcp.ImageContent{Data: png, MIMEType: "image/png"})
 			}
+			if in.Geometry {
+				insp, err := s.inspect(ctx, inspectIn{NotebookID: in.NotebookID, Pages: in.Pages})
+				if err != nil {
+					return nil, nil, err
+				}
+				js, _ := json.Marshal(insp)
+				res.Content = append(res.Content, &mcp.TextContent{Text: "Geometry (inspect_render summary): " + string(js)})
+			}
 			return res, nil, nil
+		})
+
+	addTool(s, m, "inspect_render", "See a render as text, for when you can't view images: each block's box in mm, each diagram's nodes and edges with an ASCII map, and findings from geometry (overlaps, edges through or at the wrong node, clipped code/tables, tiny text) with fixes. Loop: write, inspect_render the changed pages, fix every finding, repeat (at most 3 rounds).",
+		func(ctx context.Context, _ *mcp.CallToolRequest, in inspectIn) (*mcp.CallToolResult, any, error) {
+			out, err := s.inspect(ctx, in)
+			if err != nil {
+				return nil, nil, err
+			}
+			js, _ := json.Marshal(out) // as text: an output schema for this shape would cost every chat ~4 KB
+			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(js)}}}, nil, nil
 		})
 
 	addTool(s, m, "preview_diagram", "Render D2 source to an image without changing any notebook. Use it to check a diagram before inserting it. Returns the D2 error (with line number) if it does not compile.",
@@ -469,7 +495,7 @@ func (s *Server) register(m *mcp.Server) {
 			if err := validMode(in.Mode); err != nil {
 				return nil, nil, err
 			}
-			png, w, h, pt, err := s.lb.PreviewPNG(ctx, in.Source, th, in.Mode, in.Size)
+			png, w, h, pt, g, err := s.lb.Preview(ctx, in.Source, th, in.Mode, in.Size)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -477,7 +503,9 @@ func (s *Server) register(m *mcp.Server) {
 			if pt < 6 {
 				note += " That is too small to read: simplify it, split it, or change its direction."
 			}
-			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: note}, &mcp.ImageContent{Data: png, MIMEType: "image/png"}}}, nil, nil
+			findings, ascii := layout.PreviewInspect(g, w, in.Size)
+			geo, _ := json.Marshal(map[string]any{"findings": findings, "ascii": ascii, "nodes": g.Nodes, "edges": g.Edges, "canvas": map[string]float64{"w": g.W, "h": g.H, "w_mm": w, "h_mm": h}})
+			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: note}, &mcp.ImageContent{Data: png, MIMEType: "image/png"}, &mcp.TextContent{Text: "Geometry (D2 units): " + string(geo)}}}, nil, nil
 		})
 
 	addTool(s, m, "export_pdf", "Export a notebook as a PDF. Over HTTP it returns a download URL; locally it writes a file and returns its path.",
@@ -609,7 +637,7 @@ func (s *Server) register(m *mcp.Server) {
 			if err != nil {
 				return nil, CheckOut{}, err
 			}
-			score, pages := checked(nb, bs, r).Report()
+			score, pages := checked(nb, bs, r.With(r.ExtraIssues())).Report()
 			if len(in.Pages) > 0 {
 				var sel []layout.PageReport
 				total := 0

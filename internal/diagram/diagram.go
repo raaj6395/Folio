@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
@@ -34,6 +35,7 @@ type SVG struct {
 	Data     []byte
 	WidthPx  float64
 	HeightPx float64
+	Geom     *Geometry
 }
 
 var (
@@ -62,7 +64,7 @@ func Render(ctx context.Context, src string, st Style) (*SVG, error) {
 		LayoutResolver: func(string) (d2graph.LayoutGraph, error) { return d2dagrelayout.DefaultLayout, nil },
 	}
 	ctx = log.WithDefault(ctx)
-	d, _, err := d2lib.Compile(ctx, src, co, ro)
+	d, g, err := d2lib.Compile(ctx, src, co, ro)
 	if err != nil {
 		return nil, fmt.Errorf("D2 error: %s", strings.TrimSpace(err.Error()))
 	}
@@ -74,8 +76,8 @@ func Render(ctx context.Context, src string, st Style) (*SVG, error) {
 	if st.ThemeID >= 200 {
 		out = canvas.ReplaceAll(out, nil)
 	}
-	w, h := size(out)
-	return &SVG{Data: out, WidthPx: w, HeightPx: h}, nil
+	x, y, w, h := viewport(out)
+	return &SVG{Data: out, WidthPx: w, HeightPx: h, Geom: geometry(d, g, x, y, w, h)}, nil
 }
 
 var canvas = regexp.MustCompile(`<rect x="[-\d.]+" y="[-\d.]+" width="[\d.]+" height="[\d.]+" rx="[\d.]+" fill="#[0-9A-Fa-f]+" class=" fill-N7" stroke-width="0" />`)
@@ -157,14 +159,19 @@ func registerFonts() error {
 
 var viewBox = regexp.MustCompile(`viewBox="([-\d.]+) ([-\d.]+) ([\d.]+) ([\d.]+)"`)
 
-func size(svg []byte) (float64, float64) {
-	m := viewBox.FindSubmatch(svg)
-	if m == nil {
-		return 0, 0
+// viewport is the image size and the D2 coordinates of its top left: D2 nests its drawing in an
+// inner <svg> whose viewBox starts at the bounding box minus the padding.
+func viewport(svg []byte) (x, y, w, h float64) {
+	ms := viewBox.FindAllSubmatch(svg, 2)
+	if len(ms) == 0 {
+		return 0, 0, 0, 0
 	}
-	w, _ := strconv.ParseFloat(string(m[3]), 64)
-	h, _ := strconv.ParseFloat(string(m[4]), 64)
-	return w, h
+	f := func(b []byte) float64 { v, _ := strconv.ParseFloat(string(b), 64); return v }
+	w, h = f(ms[0][3]), f(ms[0][4])
+	if len(ms) > 1 {
+		x, y = f(ms[1][1]), f(ms[1][2])
+	}
+	return x, y, w, h
 }
 
 func Key(src string, st Style) string {
@@ -172,17 +179,28 @@ func Key(src string, st Style) string {
 	return hex.EncodeToString(sum[:8])
 }
 
+// Cached renders src once and keeps the SVG and its geometry (<key>.svg, <key>.json) in dir.
 func Cached(ctx context.Context, dir, src string, st Style) (string, *SVG, error) {
 	path := filepath.Join(dir, Key(src, st)+".svg")
+	geomPath := strings.TrimSuffix(path, ".svg") + ".json"
 	if data, err := os.ReadFile(path); err == nil {
-		w, h := size(data)
-		return path, &SVG{Data: data, WidthPx: w, HeightPx: h}, nil
+		if gj, err := os.ReadFile(geomPath); err == nil {
+			var g Geometry
+			if json.Unmarshal(gj, &g) == nil {
+				_, _, w, h := viewport(data)
+				return path, &SVG{Data: data, WidthPx: w, HeightPx: h, Geom: &g}, nil
+			}
+		}
 	}
 	svg, err := Render(ctx, src, st)
 	if err != nil {
 		return "", nil, err
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", nil, err
+	}
+	gj, _ := json.Marshal(svg.Geom)
+	if err := os.WriteFile(geomPath, gj, 0o644); err != nil {
 		return "", nil, err
 	}
 	return path, svg, os.WriteFile(path, svg.Data, 0o644)

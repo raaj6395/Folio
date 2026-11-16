@@ -186,6 +186,7 @@ func TestAccountsTokensAndIsolation(t *testing.T) {
 			"read_blocks":             {"block_ids": []string{blockID}},
 			"get_layout_info":         {},
 			"render_pages":            {"pages": []int{1}},
+			"inspect_render":          {},
 			"export_pdf":              {},
 			"get_viewer_url":          {},
 			"append_blocks":           {"blocks": []map[string]any{{"type": "divider"}}},

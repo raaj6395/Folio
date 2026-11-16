@@ -30,11 +30,11 @@ func layoutOf(density string, xs ...at) *Result {
 		if end == 0 {
 			end = x.page
 		}
-		marks = append(marks, mark{x.id, "s", x.page, pt(x.y), 0, 0, 0}, mark{x.id, "e", end, pt(x.endY), 0, 0, 0})
+		marks = append(marks, mark{x.id, "s", x.page, pt(x.y), 0, 0, 0, 0, 0, 0, 0}, mark{x.id, "e", end, pt(x.endY), 0, 0, 0, 0, 0, 0, 0})
 	}
 	last := xs[len(xs)-1]
 	end := max(last.endPg, last.page)
-	marks = append(marks, mark{"_end", "s", end, pt(last.endY), 0, 0, 0})
+	marks = append(marks, mark{"_end", "s", end, pt(last.endY), 0, 0, 0, 0, 0, 0, 0})
 	return analyze(marks, bs, density)
 }
 

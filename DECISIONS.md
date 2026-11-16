@@ -253,3 +253,26 @@
 - **Not built:** an MCP tool for Claude to share (making notes public should be the owner's click, and it would grow every chat's tool list), folder sharing, expiring links, link previews.
 - **Ceiling:** the limiter keys on the first `X-Forwarded-For` entry, like the login limiter, so a client can spoof it; fine at this scale.
 - **Affects interface/behaviour?** yes (new public routes, viewer menu item, dashboard label) — **User approved?** yes (approved SHARE_PLAN.md picks, 2026-11-09)
+
+## 2026-11-16 — inspect_render: checking a render without seeing it
+- **Why:** voice and text-only clients can't look at `render_pages`. They get the same information as structured text and fix layouts on their own.
+- **Data, no estimates:**
+  - Diagram geometry comes from D2's compiled diagram (`d2target` shapes and connections). Label boxes use D2's own placement code (`label.GetPointOnBox`, `GetLabelTopLeft`). Grid rows and columns come from cell positions in `IsGridDiagram` containers.
+  - The geometry is cached as `<key>.json` beside each diagram SVG. Coordinates are relative to the SVG's inner viewBox, so they match the image.
+  - Page boxes come from the Typst marks Folio already queries. Marks now also carry the font size, each diagram image's real width, and, for code, the line count, widest line and longest unbreakable token. Typst wraps code at spaces, so only a token wider than the box is `clipped`.
+- **Checks:** pure geometry in `internal/diagram/inspect.go` and `internal/layout/inspect.go`.
+  - `wrong_cell` is a grid edge that crosses another cell before its target. Folio can't know which cell was meant, so "points at the wrong cell" means it visibly reads that way.
+  - Diagonal edges aren't flagged: there's no way to know straight lines were wanted. Each edge reports `axis_aligned` instead.
+  - `aspect_extreme` for narrowness needs a portrait diagram under a third of its column. A small wide diagram is fine, and "too tall" stays `oversized_diagram` (reported as `aspect_extreme`).
+  - `label_overflow` also covers an edge label longer than its edge, which hides the line. On the real "Minimum Path Sum" grid, the labels in 30-unit gaps hide every arrow.
+- **Opt-in:**
+  - Writes and `get_layout_info` are unchanged, except the new `wide_code` issue, which sits next to `wide_table`.
+  - `check_layout` adds the geometry findings to its issues and score; `label_overflow` costs 5 because one label can overlap several things.
+  - `render_pages` adds the summary only with `include_geometry`. `preview_diagram` appends one geometry text part after the image.
+- **Size:**
+  - `inspect_render` returns JSON text, not structured output: its output schema would have added ~4 KB to every chat's `tools/list`. `TestToolListBudget` is now 35,500 (35,241 used).
+  - A response is trimmed to about 4k tokens per page shown: block lines first, then diagram coordinates, then ASCII maps. Findings are never cut.
+- **Not built:**
+  - an ASCII map of whole pages (the per-block lines cover it);
+  - cell boxes for Folio's own table blocks (`clipped` covers the failure that matters);
+  - per-cell boxes for D2 `class` shapes.

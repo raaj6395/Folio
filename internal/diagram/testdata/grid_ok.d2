@@ -1,0 +1,17 @@
+g: "" {
+  grid-rows: 3
+  grid-columns: 3
+  grid-gap: 40
+  c00: "(0,0) start" {style.fill: "#2e7d32"; style.font-color: "#ffffff"}
+  c01: "(i-1, j)"
+  c02: " "
+  c10: "(i, j-1)"
+  c11: "(i, j)" {style.fill: "#f9a825"; style.bold: true}
+  c12: " "
+  c20: " "
+  c21: " "
+  c22: "end" {style.fill: "#c62828"; style.font-color: "#ffffff"}
+  c01 -> c11
+  c10 -> c11
+  c11 -> c22: {style.stroke-width: 4; style.bold: true}
+}

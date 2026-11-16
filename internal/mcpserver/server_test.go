@@ -244,9 +244,12 @@ func TestDiagrams(t *testing.T) {
 	if out.Blocks[0].Summary != "diagram: ~3 nodes, Flow" {
 		t.Fatal(out.Blocks[0].Summary)
 	}
-	r := c.raw("preview_diagram", map[string]any{"source": "a -> b"})
-	if r.IsError || len(r.Content) != 2 || !strings.Contains(r.Content[0].(*mcp.TextContent).Text, "labels ~") {
+	r := c.raw("preview_diagram", map[string]any{"source": "direction: right\na -> b"})
+	if r.IsError || len(r.Content) != 3 || !strings.Contains(r.Content[0].(*mcp.TextContent).Text, "labels ~") {
 		t.Fatalf("%+v", r.Content)
+	}
+	if geo := r.Content[2].(*mcp.TextContent).Text; !strings.Contains(geo, `"findings":[]`) || !strings.Contains(geo, `"src":"a","dst":"b"`) || !strings.Contains(geo, "+--") {
+		t.Fatalf("preview geometry: %s", geo)
 	}
 	if msg := c.callErr("preview_diagram", map[string]any{"source": "a -> "}); !strings.Contains(msg, "D2 error") {
 		t.Fatal(msg)
@@ -463,7 +466,8 @@ func TestGuidelinesDensityAndCheckLayout(t *testing.T) {
 
 // Every tool's schema rides along in every chat with Folio connected, so growth must be deliberate.
 // Templates took it from 31,875 to 32,837 bytes; canvas (format, tiles, canvas_mm in every
-// write result) to 34,066. Raise the budget only on purpose.
+// write result) to 34,066; inspect_render (output as text, no output schema) to 35,241.
+// Raise the budget only on purpose.
 func TestToolListBudget(t *testing.T) {
 	c := newClient(t)
 	tools, err := c.cs.ListTools(context.Background(), nil)
@@ -471,8 +475,8 @@ func TestToolListBudget(t *testing.T) {
 		t.Fatal(err)
 	}
 	js, _ := json.Marshal(tools.Tools)
-	if n := len(js); n > 34_500 {
-		t.Fatalf("tools/list is %d bytes, budget 34,500", n)
+	if n := len(js); n > 35_500 {
+		t.Fatalf("tools/list is %d bytes, budget 35,500", n)
 	}
 }
 

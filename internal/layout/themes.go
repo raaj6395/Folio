@@ -61,9 +61,10 @@ const (
 // "canvas" is a top-level diagram on a canvas: natural size, no column or height cap.
 var sizeFrac = map[string]float64{"full": 1, "half": 0.5, "small": 0.35, "canvas": 1}
 
-func (b *Builder) docBlocks(ctx context.Context, dir string, style diagram.Style, blocks []model.Block, canvas bool) ([]map[string]any, []Issue, error) {
+func (b *Builder) docBlocks(ctx context.Context, dir string, style diagram.Style, blocks []model.Block, canvas bool) ([]map[string]any, []Issue, map[string]*diagram.Geometry, error) {
 	out := make([]map[string]any, len(blocks))
 	var warns []Issue
+	geoms := map[string]*diagram.Geometry{}
 	var walk func(m map[string]any) error
 	walk = func(m map[string]any) error {
 		for _, side := range []string{"left", "right"} {
@@ -84,6 +85,7 @@ func (b *Builder) docBlocks(ctx context.Context, dir string, style diagram.Style
 			return fmt.Errorf("diagram %s: %w", id, err)
 		}
 		w, h, pt := Fit(svg, m["size"].(string))
+		geoms[id] = svg.Geom
 		m["svg"] = "diagrams/" + filepath.Base(path)
 		m["width_mm"] = w
 		m["height_mm"] = h
@@ -99,10 +101,10 @@ func (b *Builder) docBlocks(ctx context.Context, dir string, style diagram.Style
 			out[i]["size"], out[i]["canvas"] = "canvas", true
 		}
 		if err := walk(out[i]); err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 	}
-	return out, warns, nil
+	return out, warns, geoms, nil
 }
 
 func Fit(svg *diagram.SVG, size string) (wmm, hmm, labelPt float64) {
@@ -122,11 +124,35 @@ func Fit(svg *diagram.SVG, size string) (wmm, hmm, labelPt float64) {
 	return round1(wmm), round1(wmm * aspect), round1(d2LabelPt * wmm / natural)
 }
 
-func (b *Builder) PreviewPNG(ctx context.Context, src string, th Theme, mode, size string) ([]byte, float64, float64, float64, error) {
+// PreviewInspect checks a diagram as it would sit on the page at size, with its ASCII map.
+func PreviewInspect(g *diagram.Geometry, wmm float64, size string) ([]Finding, string) {
+	if g == nil || g.W == 0 {
+		return nil, ""
+	}
+	mmpu := wmm / g.W
+	for i := range g.Nodes {
+		g.Nodes[i].FontPt = round1(float64(g.Nodes[i].FontPx) * mmpu / ptToMM)
+	}
+	for i := range g.Edges {
+		g.Edges[i].FontPt = round1(float64(g.Edges[i].FontPx) * mmpu / ptToMM)
+	}
+	avail := textWidthMM * sizeFrac[size]
+	if size == "canvas" {
+		avail = 0
+	}
+	fs := diagram.Inspect(g, diagram.Placement{MMPerUnit: mmpu, AvailMM: avail})
+	if fs == nil {
+		fs = []Finding{}
+	}
+	return fs, diagram.ASCII(g, asciiCols, asciiRows)
+}
+
+// Preview renders a diagram alone to PNG and returns its on-page size, label size and geometry.
+func (b *Builder) Preview(ctx context.Context, src string, th Theme, mode, size string) ([]byte, float64, float64, float64, *diagram.Geometry, error) {
 	dir := filepath.Join(b.Home, "build", "_preview")
 	path, svg, err := diagram.Cached(ctx, dir, src, th.D2For(mode))
 	if err != nil {
-		return nil, 0, 0, 0, err
+		return nil, 0, 0, 0, nil, err
 	}
 	w, h, pt := Fit(svg, size)
 	b.lock("preview", "_preview")
@@ -138,11 +164,11 @@ func (b *Builder) PreviewPNG(ctx context.Context, src string, th Theme, mode, si
 	typ := fmt.Sprintf("#set page(width: auto, height: auto, margin: 4mm, fill: %s)\n#image(%q, width: %.1fmm)\n", bg, filepath.Base(path), w)
 	base := strings.TrimSuffix(filepath.Base(path), ".svg") + "-" + size + "-" + mode
 	if err := os.WriteFile(filepath.Join(dir, base+".typ"), []byte(typ), 0o644); err != nil {
-		return nil, 0, 0, 0, err
+		return nil, 0, 0, 0, nil, err
 	}
 	if _, err := b.typst(ctx, dir, "compile", base+".typ", base+".png", "--ppi", "100"); err != nil {
-		return nil, 0, 0, 0, err
+		return nil, 0, 0, 0, nil, err
 	}
 	png, err := os.ReadFile(filepath.Join(dir, base+".png"))
-	return png, w, h, pt, err
+	return png, w, h, pt, svg.Geom, err
 }

@@ -87,7 +87,7 @@
   }))
 }
 
-#let mark(id) = [#metadata((id: id, k: "s"))<blockpos>]
+#let mark(id, pt: none) = context [#metadata((id: id, k: "s", pt: if pt == none { text.size / 1pt } else { pt / 1pt }))<blockpos>]
 #let endmark(id) = [#metadata((id: id, k: "e"))<blockpos>]
 
 #let content-height = 257mm
@@ -123,7 +123,7 @@
   if ty == "heading" {
     let above = (g.h1, g.h2, g.h3).at(b.level - 1)
     block(sticky: true, above: above, below: 0.7em, {
-      mark(b.id)
+      mark(b.id, pt: t.heading-sizes.at(b.level - 1))
       heading(level: b.level, spans(b.text))
       endmark(b.id)
     })
@@ -154,6 +154,13 @@
   } else if ty == "code" {
     nosplit(block(width: 100%, {
       mark(b.id)
+      // Long lines wrap at spaces; a token wider than the box runs off its edge.
+      place(layout(size => {
+        let lines = b.code.split("\n")
+        let widest = calc.max(0pt, ..lines.map(l => measure(raw(l)).width))
+        let need = calc.max(0pt, ..lines.map(l => l.split(regex("\\s+")).map(w => measure(raw(w)).width)).flatten())
+        [#metadata((id: b.id, k: "code", lines: lines.len(), widest: widest / 1pt, need: need / 1pt, have: (size.width - 16pt) / 1pt))<blockpos>]
+      }))
       block(width: 100%, fill: t.code-bg, radius: 3pt, inset: 8pt,
         raw(b.code, lang: if b.language == "" { none } else { b.language }, block: true))
       caption(b.caption)
@@ -219,6 +226,7 @@
   } else if ty == "diagram" and canvas and b.at("canvas", default: false) {
     block(width: 100%, above: g.box, below: g.box, {
       mark(b.id)
+      [#metadata((id: b.id, k: "img", w: b.width_mm * 1mm / 1pt))<blockpos>]
       image(b.svg, width: b.width_mm * 1mm)
       block(width: b.width_mm * 1mm, caption(b.caption))
       endmark(b.id)
@@ -226,7 +234,13 @@
   } else if ty == "diagram" {
     nosplit(above: g.box, below: g.box, never: true, block(width: 100%, {
       mark(b.id)
-      layout(size => align(center, image(b.svg, width: calc.min(b.width_mm * 1mm, size.width))))
+      layout(size => {
+        let w = calc.min(b.width_mm * 1mm, size.width)
+        align(center, block(width: w, {
+          [#metadata((id: b.id, k: "img", w: w / 1pt))<blockpos>]
+          image(b.svg, width: w)
+        }))
+      })
       caption(b.caption)
       endmark(b.id)
     }))
