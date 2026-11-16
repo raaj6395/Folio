@@ -4,7 +4,7 @@ label: Compare
 use_when: two to five things compared ("X vs Y", "difference between", "compare", "when should I use X or Y")
 required: At a glance, When to use
 ---
-**Unit:** one comparison = one H1 titled `X vs Y`, 1 page. Up to 5 options (a table has at most 6 columns).
+**Unit:** one comparison = one H1 titled `X vs Y`, 1 page. Up to 5 options (more columns get too narrow to read).
 
 ## Sections
 | # | H2 heading | What goes in it | Blocks |

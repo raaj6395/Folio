@@ -311,6 +311,8 @@ type Table struct {
 
 var alignments = []string{"left", "center", "right"}
 
+const MaxTableCols, MaxTableRows = 30, 1000
+
 var numericCell = regexp.MustCompile(`^[-+]?[$€£₹]?\d[\d,]*(\.\d+)?\s*[%x×]?$`)
 
 func (t *Table) alignments() []string {
@@ -338,14 +340,16 @@ func (t *Table) alignments() []string {
 }
 
 func (t *Table) validate() error {
-	if n := len(t.Columns); n < 2 || n > 6 {
-		return fmt.Errorf("columns has %d entries, must be 2-6", n)
+	// Width and height are checked by layout (wide_table; long tables continue on the next page).
+	// These caps only stop absurd payloads.
+	if n := len(t.Columns); n < 2 || n > MaxTableCols {
+		return fmt.Errorf("columns has %d entries, must be 2-%d", n, MaxTableCols)
 	}
 	if len(t.Rows) == 0 {
 		return errors.New(`field "rows" must contain at least one row`)
 	}
-	if len(t.Rows) > 25 {
-		return fmt.Errorf("table has %d rows, max 25; split it into several tables", len(t.Rows))
+	if len(t.Rows) > MaxTableRows {
+		return fmt.Errorf("table has %d rows, max %d; split it into several tables", len(t.Rows), MaxTableRows)
 	}
 	for i, r := range t.Rows {
 		if len(r) != len(t.Columns) {

@@ -9,7 +9,7 @@ Send blocks as JSON objects. Do not include an `id` on new blocks; Folio assigns
 | paragraph `text` | 2000 characters |
 | bullets / numbered | 40 items total, nesting depth 3 |
 | code | 80 lines |
-| table | 2–6 columns, at most 25 rows, every row the same length as `columns` |
+| table | 2+ columns, as many as fit the page width; any number of rows (long tables continue on the next page); every row the same length as `columns` |
 | fill_in `lines` | 1–15 |
 | append / insert | 50 blocks per call |
 | guidelines | 2000 characters |

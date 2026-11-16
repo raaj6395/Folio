@@ -92,6 +92,20 @@
 
 #let content-height = 257mm
 
+// Narrowest a cell can get: its widest run that can't wrap (words split at spaces, "-" and "/").
+#let min-cell(xs, bold: false) = {
+  let w = 0pt
+  for s in xs {
+    let code = s.at("c", default: false)
+    for word in s.t.split(regex("[\\s/-]+")) {
+      let c = if code { raw(word) } else { text(word) }
+      if bold or s.at("b", default: false) { c = strong(c) }
+      w = calc.max(w, measure(c).width + if code { 5pt } else { 0pt })
+    }
+  }
+  w
+}
+
 #let nosplit(body, above: auto, below: auto, never: false, limit: 0.4) = {
   let inner = layout(size => {
     let h = measure(block(width: size.width, body)).height
@@ -150,6 +164,10 @@
     let aligns = b.at("align", default: ("left",) * n).map(a => (left: left, center: center, right: right).at(a))
     nosplit(above: g.box, below: g.box, block(width: 100%, {
       mark(b.id)
+      place(layout(size => {
+        let need = range(n).map(i => calc.max(min-cell(b.columns.at(i), bold: true), ..b.rows.map(r => min-cell(r.at(i))))).sum() + n * 12pt
+        if need > size.width + 1pt { [#metadata((id: b.id, k: "w", need: need / 1pt, have: size.width / 1pt))<blockpos>] }
+      }))
       table(
         columns: (auto,) * n,
         align: (x, _) => aligns.at(x) + horizon,

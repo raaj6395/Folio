@@ -24,6 +24,7 @@ var penalty = map[string]float64{
 	"orphan_heading":     20,
 	"unreadable_diagram": 20,
 	"pushed_block":       15,
+	"wide_table":         20,
 	"oversized_diagram":  15,
 	"monotone_stack":     10,
 	"cramped":            10,

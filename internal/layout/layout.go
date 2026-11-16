@@ -247,7 +247,7 @@ func (b *Builder) build(ctx context.Context, nb store.Notebook, blocks []model.B
 	if err := os.WriteFile(filepath.Join(dir, "doc.json"), js, 0o644); err != nil {
 		return nil, err
 	}
-	raw, err := b.typst(ctx, dir, "eval", `query(<blockpos>).map(it => (id: it.value.id, k: it.value.k, page: it.location().page(), y: it.location().position().y / 1pt, x: it.location().position().x / 1pt))`, "--in", "main.typ")
+	raw, err := b.typst(ctx, dir, "eval", `query(<blockpos>).map(it => (id: it.value.id, k: it.value.k, page: it.location().page(), y: it.location().position().y / 1pt, x: it.location().position().x / 1pt, need: it.value.at("need", default: 0), have: it.value.at("have", default: 0)))`, "--in", "main.typ")
 	if err != nil {
 		return nil, err
 	}

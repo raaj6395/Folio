@@ -17,6 +17,8 @@ type mark struct {
 	Page int     `json:"page"`
 	Y    float64 `json:"y"`
 	X    float64 `json:"x"`
+	Need float64 `json:"need"` // k "w": a table's narrowest width and the width it has, in pt
+	Have float64 `json:"have"`
 }
 
 func round1(f float64) float64 { return float64(int(f*10+0.5)) / 10 }
@@ -46,6 +48,9 @@ func analyze(marks []mark, blocks []model.Block, density string) *Result {
 		mm := m.Y * 25.4 / 72
 		if m.ID == "_end" {
 			endPage, endY = m.Page, mm
+			continue
+		}
+		if m.K == "w" {
 			continue
 		}
 		i, ok := idx[m.ID]
@@ -81,9 +86,23 @@ func analyze(marks []mark, blocks []model.Block, density string) *Result {
 			r.LastPageFill = fillPct(endY)
 		}
 	}
-	r.Issues = checks(r, density)
+	r.Issues = append(checks(r, density), wideIssues(marks, r)...)
 	r.Warnings = warningsOf(r.Issues)
 	return r
+}
+
+// wideIssues reports tables whose columns can't fit the width they have, even fully wrapped.
+func wideIssues(marks []mark, r *Result) []Issue {
+	var is []Issue
+	for _, m := range marks {
+		if m.K != "w" {
+			continue
+		}
+		is = append(is, Issue{"wide_table", r.Page(m.ID), []string{m.ID},
+			fmt.Sprintf("table %s needs at least %.0fmm but only %.0fmm fits, so its columns overlap", m.ID, m.Need*25.4/72, m.Have*25.4/72),
+			"drop or merge columns, or shorten long words and headers"})
+	}
+	return is
 }
 
 // analyzeCanvas lays out positions like analyze, but a canvas has one page and no page checks.
@@ -107,6 +126,7 @@ func analyzeCanvas(marks []mark, blocks []model.Block, density string, widthMM f
 		is = append(is, Issue{"canvas_too_large", 1, nil, fmt.Sprintf("the canvas is %.0f×%.0f mm, over %.0f mm on a side: hard to read and slow to render", r.CanvasWMM, r.CanvasHMM, MaxCanvasMM),
 			"split it into several canvases, or group nodes into D2 containers and simplify"})
 	}
+	is = append(is, wideIssues(marks, r)...)
 	r.Issues, r.Warnings = is, warningsOf(is)
 	return r
 }

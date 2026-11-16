@@ -12,7 +12,7 @@ required: Key terms, Summary
 ## Review page sections
 | # | H2 heading | What goes in it | Blocks |
 |---|---|---|---|
-| 1 | Key terms | Every term the lecture defined, one line each | `table` (Term, Meaning), ≤ 25 rows |
+| 1 | Key terms | Every term the lecture defined, one line each | `table` (Term, Meaning) |
 | 2 | Summary | 3-5 sentences in plain words | `callout` key_point or `paragraph` |
 | 3 | Likely exam questions | What the lecturer stressed, repeated or called important | 3-5 `qa` with hide_answer true; pair them in a `two_column` |
 | 4 | Ask the lecturer (optional) | What the slides left unclear | `fill_in`, 3 lines |

@@ -39,7 +39,7 @@ Text fields accept only: `**bold**`, `*italic*`, `` `code` ``, `[text](url)`, `=
 ```
 Callout variants: `note`, `tip`, `warning`, `definition`, `key_point`.
 
-Limits: paragraph ≤ 2000 chars; lists ≤ 40 items and depth ≤ 3; code ≤ 80 lines; tables 2–6 columns, ≤ 25 rows; fill_in 1–15 lines.
+Limits: paragraph ≤ 2000 chars; lists ≤ 40 items and depth ≤ 3; code ≤ 80 lines; tables need 2+ columns and as many as fit the page width (`wide_table` warns when they don't), any number of rows (a long table continues on the next page with its header repeated); fill_in 1–15 lines.
 
 Tables align text columns left and number columns right by default; `align` (one of left/center/right per column) overrides that. Inside `two_column` you may use level-3 headings, paragraphs, lists, callouts, code, `half`/`small` diagrams and Q&A.
 
