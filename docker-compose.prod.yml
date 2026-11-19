@@ -1,0 +1,45 @@
+# Production: Postgres + Folio + Caddy (automatic HTTPS) on one VM.
+# Needs a .env next to this file with DOMAIN and POSTGRES_PASSWORD.
+#   docker compose -f docker-compose.prod.yml up -d --build
+services:
+  db:
+    image: postgres:17.7-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: folio
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: folio
+    volumes:
+      - folio-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U folio -d folio"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  folio:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      FOLIO_DB_URL: postgres://folio:${POSTGRES_PASSWORD}@db:5432/folio?sslmode=disable
+      FOLIO_HTTP_ADDR: 0.0.0.0:10000
+      FOLIO_PUBLIC_URL: https://${DOMAIN:?set DOMAIN in .env}
+      FOLIO_SIGNUP: ${FOLIO_SIGNUP:-open}
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    depends_on: [folio]
+    command: caddy reverse-proxy --from ${DOMAIN} --to folio:10000
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy-data:/data
+
+volumes:
+  folio-pg:
+  caddy-data:
