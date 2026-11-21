@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#131824">
+<meta name="theme-color" content="#141415">
 <title>{{.Title}} · Folio</title>
 {{if .Shared}}<meta name="robots" content="noindex">
 {{end}}<link rel="icon" href="/logo.svg" type="image/svg+xml">
@@ -18,25 +18,25 @@
 </head>
 <body class="canvas-view">
 <header class="bar">
-  {{if .Shared}}<a class="icon-btn" href="/" title="Made with Claude + Folio" aria-label="Folio home"><img src="/logo.svg" alt="" width="18" height="18"></a>{{else}}<a class="icon-btn" href="{{if .FolderID}}/f/{{.FolderID}}{{else}}/{{end}}" title="Back to notebooks" aria-label="Back to notebooks">←</a>{{end}}
-  <button class="icon-btn" type="button" id="outlineBtn" title="Contents (o)" aria-label="Contents" aria-controls="outline" aria-expanded="false" hidden>☰</button>
+  {{if .Shared}}<a class="icon-btn" href="/" title="Made with Claude + Folio" aria-label="Folio home"><img src="/logo.svg" alt="" width="18" height="18"></a>{{else}}<a class="icon-btn" href="{{if .FolderID}}/f/{{.FolderID}}{{else}}/{{end}}" title="Back to notebooks" aria-label="Back to notebooks"><svg class="i" aria-hidden="true"><use href="/icons.svg#back"/></svg></a>{{end}}
+  <button class="icon-btn" type="button" id="outlineBtn" title="Contents (o)" aria-label="Contents" aria-controls="outline" aria-expanded="false" hidden><svg class="i" aria-hidden="true"><use href="/icons.svg#contents"/></svg></button>
   <span class="grow title" id="title">{{.Title}}</span>
-  {{if .Shared}}<span class="pill" title="You can view this {{if eq .Format "canvas"}}canvas{{else}}notebook{{end}} but not change it">Read-only</span>{{end}}
+  {{if .Shared}}<span class="tag" title="You can view this {{if eq .Format "canvas"}}canvas{{else}}notebook{{end}} but not change it">Read-only</span>{{end}}
   <span class="live" id="status" role="status">Connecting…</span>
   <span class="seg" role="group" aria-label="Zoom">
-    <button type="button" id="zout" title="Zoom out (−)" aria-label="Zoom out">−</button>
+    <button type="button" id="zout" title="Zoom out (−)" aria-label="Zoom out"><svg class="i" aria-hidden="true"><use href="/icons.svg#minus"/></svg></button>
     <button type="button" id="zreset" title="Fit to screen (0)">100%</button>
-    <button type="button" id="zin" title="Zoom in (+)" aria-label="Zoom in">+</button>
+    <button type="button" id="zin" title="Zoom in (+)" aria-label="Zoom in"><svg class="i" aria-hidden="true"><use href="/icons.svg#plus"/></svg></button>
   </span>
   <details class="menu">
-    <summary class="icon-btn" title="More" aria-label="More options">⋯</summary>
+    <summary class="icon-btn" title="More" aria-label="More options"><svg class="i" aria-hidden="true"><use href="/icons.svg#more"/></svg></summary>
     <div class="pop">
       <div class="label">Appearance</div>
       <div class="pad">
         <div class="seg" role="group" aria-label="Appearance in this browser">
           <button type="button" data-view="" title="Follow the canvas's own mode">Auto</button>
-          <button type="button" data-view="dark">☾ Dark</button>
-          <button type="button" data-view="light">☀ Light</button>
+          <button type="button" data-view="dark"><svg class="i" aria-hidden="true"><use href="/icons.svg#moon"/></svg>Dark</button>
+          <button type="button" data-view="light"><svg class="i" aria-hidden="true"><use href="/icons.svg#sun"/></svg>Light</button>
         </div>
         <div class="hint">Only changes how you see it here.</div>
       </div>
@@ -52,7 +52,7 @@
       <div class="item static">Version <span><b id="version">{{.Version}}</b> · <span id="ago"></span></span></div>
     </div>
   </details>
-  <a class="btn" id="pdf" href="{{.Base}}/pdf" title="Download PDF (d)">⤓ <span class="wide-only">Download</span> PDF</a>
+  <a class="btn" id="pdf" href="{{.Base}}/pdf" title="Download PDF (d)"><svg class="i" aria-hidden="true"><use href="/icons.svg#download"/></svg><span><span class="wide-only">Download </span>PDF</span></a>
 </header>
 <nav class="outline" id="outline" aria-label="Contents" hidden>
   <div class="label">Contents</div>

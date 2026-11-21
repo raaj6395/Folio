@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#131824">
+<meta name="theme-color" content="#141415">
 <title>Folio</title>
 <link rel="icon" href="/logo.svg" type="image/svg+xml">
 <script>
@@ -19,9 +19,9 @@
   <a class="brand" href="/"><img src="/logo.svg" alt="">Folio</a>
   <span class="grow"></span>
   <div class="seg" role="group" aria-label="Appearance in this browser">
-    <button type="button" data-view="" title="Auto" aria-label="Auto">◐</button>
-    <button type="button" data-view="dark" title="Dark" aria-label="Dark">☾</button>
-    <button type="button" data-view="light" title="Light" aria-label="Light">☀</button>
+    <button type="button" data-view="" title="Auto" aria-label="Auto"><svg class="i" aria-hidden="true"><use href="/icons.svg#auto"/></svg></button>
+    <button type="button" data-view="dark" title="Dark" aria-label="Dark"><svg class="i" aria-hidden="true"><use href="/icons.svg#moon"/></svg></button>
+    <button type="button" data-view="light" title="Light" aria-label="Light"><svg class="i" aria-hidden="true"><use href="/icons.svg#sun"/></svg></button>
   </div>
   {{if .Auth}}<details class="menu">
     <summary class="icon-btn" aria-label="Account menu"><span class="avatar" data-initial="{{.Email}}"></span></summary>
@@ -36,14 +36,14 @@
 </header>
 <main id="main">
 {{if or .All .HasFolders}}
-  {{with .Here}}<nav class="crumbs" aria-label="Folder path"><a href="/" data-drop="">Notebooks</a>{{range $.Crumbs}}<span aria-hidden="true">›</span>{{if eq .ID $.Here.ID}}<span aria-current="page">{{.Name}}</span>{{else}}<a href="/f/{{.ID}}" data-drop="{{.ID}}">{{.Name}}</a>{{end}}{{end}}</nav>
-  <a class="crumbs-up" href="{{$.Up}}">‹ {{$.UpName}}</a>{{end}}
+  {{with .Here}}<nav class="crumbs" aria-label="Folder path"><a href="/" data-drop="">Notebooks</a>{{range $.Crumbs}}<svg class="i" aria-hidden="true"><use href="/icons.svg#right"/></svg>{{if eq .ID $.Here.ID}}<span aria-current="page">{{.Name}}</span>{{else}}<a href="/f/{{.ID}}" data-drop="{{.ID}}">{{.Name}}</a>{{end}}{{end}}</nav>
+  <a class="crumbs-up" href="{{$.Up}}"><svg class="i" aria-hidden="true"><use href="/icons.svg#left"/></svg>{{$.UpName}}</a>{{end}}
   <div class="toolbar">
     <h1>{{with .Here}}{{.Name}}{{else}}Notebooks{{end}}{{if .Notebooks}} <span class="meta">{{len .Notebooks}}</span>{{end}}</h1>
-    {{if .Search}}<input class="search" id="q" type="search" placeholder="Search all notebooks  ( / )" aria-label="Search notebooks">
+    {{if .Search}}<input class="search" id="q" type="search" placeholder="Search" title="Search all notebooks (/)" aria-label="Search notebooks">
     <select id="sort" aria-label="Sort notebooks"><option value="recent">Recently edited</option><option value="az">Title A–Z</option></select>{{end}}
     {{if and .HasFolders .Notebooks}}<button class="btn secondary" type="button" id="selectBtn" aria-pressed="false">Select</button>{{end}}
-    {{if .CanNest}}<button class="btn secondary" type="button" id="newFolder" data-parent="{{with .Here}}{{.ID}}{{end}}">+ New folder</button>{{end}}
+    {{if .CanNest}}<button class="btn secondary" type="button" id="newFolder" data-parent="{{with .Here}}{{.ID}}{{end}}"><svg class="i" aria-hidden="true"><use href="/icons.svg#plus"/></svg>New folder</button>{{end}}
   </div>
   {{with .Favorites}}<section data-browse>
     <h2>Favourites</h2>
@@ -62,7 +62,7 @@
         <span class="meta">{{.Count}} {{if eq .Count 1}}notebook{{else}}notebooks{{end}}</span></div>
       </div>
       <details class="menu">
-        <summary class="icon-btn" aria-label="Actions for folder {{.Name}}" title="Actions">⋯</summary>
+        <summary class="icon-btn" aria-label="Actions for folder {{.Name}}" title="Actions"><svg class="i" aria-hidden="true"><use href="/icons.svg#more"/></svg></summary>
         <div class="pop">
           <a class="item" href="/f/{{.ID}}">Open</a>
           <button class="item" type="button" data-rename-folder="{{.ID}}" data-current="{{.Name}}">Rename…</button>
@@ -97,9 +97,9 @@
     <p class="meta">Claude writes your notes and Folio typesets them into clean pages. Here's how to make the first one.</p>
     <ol class="steps">
       {{if .Connected}}<li class="done"><b>Claude is connected</b><br><span class="meta">Done. Claude can reach your Folio.</span></li>
-      {{else}}<li><b>Connect Claude</b><br><span class="meta">{{if .Auth}}<a href="/connect">Add Folio as a connector</a>. It takes a minute.{{else}}Add Folio to Claude as an MCP server.{{end}}</span></li>{{end}}
-      <li{{if .Connected}} class="current"{{end}}><b>Ask for notes</b><br><span class="meta">Copy one of the prompts below into Claude.</span></li>
-      <li><b>Watch it appear</b><br><span class="meta">It shows up on this page by itself, no reload needed.</span></li>
+      {{else}}<li><b>Connect Claude</b><br><span class="meta">{{if .Auth}}<a href="/connect">Add Folio as a connector</a>. It takes a minute.{{else}}Add Folio to Claude as an MCP server{{end}}</span></li>{{end}}
+      <li{{if .Connected}} class="current"{{end}}><b>Ask for notes</b><br><span class="meta">Copy one of the prompts below into Claude</span></li>
+      <li><b>Watch it appear</b><br><span class="meta">It shows up on this page by itself, no reload needed</span></li>
     </ol>
     <div class="prompts">
       <h3>Try a prompt</h3>
@@ -383,14 +383,14 @@ init();
     {{if .Movable}}<input type="checkbox" class="pick" value="{{.ID}}" aria-label="Select {{.Title}}">{{end}}
     <form method="post" action="/n/{{.ID}}/favorite" class="fav">
       <input type="hidden" name="back" class="back"><input type="hidden" name="on" value="{{if .Favorite}}0{{else}}1{{end}}">
-      <button class="icon-btn" type="submit" aria-pressed="{{.Favorite}}" aria-label="Favourite" title="{{if .Favorite}}Remove from favourites{{else}}Add to favourites{{end}}">{{if .Favorite}}★{{else}}☆{{end}}</button>
+      <button class="icon-btn" type="submit" aria-pressed="{{.Favorite}}" aria-label="Favourite" title="{{if .Favorite}}Remove from favourites{{else}}Add to favourites{{end}}"><svg class="i" aria-hidden="true"><use href="/icons.svg#star"/></svg></button>
     </form>
     <div class="body">
       <a class="t" href="/n/{{.ID}}">{{.Title}}</a>
-      <div class="foot">{{if .ShareToken}}<span class="pill" title="Anyone with the link can view it">Shared</span>{{end}}{{if eq .Format "canvas"}}<span class="pill" title="One big sheet instead of A4 pages">Canvas</span>{{end}}{{with .Kind}}<span class="pill" title="Template">{{.}}</span>{{end}}{{if .Path}}<span class="pill" title="Folder">{{.Path}}</span>{{else}}<span class="pill">{{.Theme}}</span><span class="pill">{{.Mode}}</span>{{end}}<time class="meta" datetime="{{.UpdatedAt.UTC.Format "2006-01-02T15:04:05Z07:00"}}">{{.UpdatedAt.Format "2 Jan 2006"}}</time></div>
+      <div class="foot"><span class="tags">{{if .ShareToken}}<span class="tag" title="Anyone with the link can view it">Shared</span>{{end}}{{if eq .Format "canvas"}}<span class="tag" title="One big sheet instead of A4 pages">Canvas</span>{{end}}{{with .Kind}}<span class="tag" title="Template">{{.}}</span>{{end}}{{if .Path}}<span class="tag" title="Folder">{{.Path}}</span>{{else}}<span class="tag" title="Theme">{{.Theme}}</span><span class="tag" title="Mode">{{.Mode}}</span>{{end}}</span><time class="meta" datetime="{{.UpdatedAt.UTC.Format "2006-01-02T15:04:05Z07:00"}}">{{.UpdatedAt.Format "2 Jan 2006"}}</time></div>
     </div>
     <details class="menu">
-      <summary class="icon-btn" aria-label="Actions for {{.Title}}" title="Actions">⋯</summary>
+      <summary class="icon-btn" aria-label="Actions for {{.Title}}" title="Actions"><svg class="i" aria-hidden="true"><use href="/icons.svg#more"/></svg></summary>
       <div class="pop">
         <a class="item" href="/n/{{.ID}}">Open</a>
         <a class="item" href="/n/{{.ID}}/pdf">Download PDF</a>

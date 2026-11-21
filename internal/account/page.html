@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#131824">
+<meta name="theme-color" content="#141415">
 <title>{{.Title}} · Folio</title>
 <link rel="icon" href="/logo.svg" type="image/svg+xml">
 <script>
@@ -19,9 +19,9 @@
   <a class="brand" href="/"><img src="/logo.svg" alt="">Folio</a>
   <span class="grow"></span>
   <div class="seg" role="group" aria-label="Appearance in this browser">
-    <button type="button" data-view="" title="Auto" aria-label="Auto">◐</button>
-    <button type="button" data-view="dark" title="Dark" aria-label="Dark">☾</button>
-    <button type="button" data-view="light" title="Light" aria-label="Light">☀</button>
+    <button type="button" data-view="" title="Auto" aria-label="Auto"><svg class="i" aria-hidden="true"><use href="/icons.svg#auto"/></svg></button>
+    <button type="button" data-view="dark" title="Dark" aria-label="Dark"><svg class="i" aria-hidden="true"><use href="/icons.svg#moon"/></svg></button>
+    <button type="button" data-view="light" title="Light" aria-label="Light"><svg class="i" aria-hidden="true"><use href="/icons.svg#sun"/></svg></button>
   </div>
   {{if .Email}}<details class="menu">
     <summary class="icon-btn" aria-label="Account menu"><span class="avatar" data-initial="{{.Email}}"></span></summary>
@@ -40,9 +40,9 @@
 <main id="main" class="auth">
   <div class="hero">
     <img src="/logo.svg" alt="">
-    <h1>{{if eq .Page "login"}}Welcome back{{else}}Create your account{{end}}</h1>
-    <p class="meta">{{if eq .Page "login"}}Log in to read the notebooks Claude typesets for you.{{else}}Claude writes your notes. Folio typesets them into clean pages you can read and print.{{end}}</p>
-    {{if eq .Page "signup"}}<div class="flow"><b>① Sign up</b><span>→</span><span>② Connect Claude</span><span>→</span><span>③ Ask for notes</span></div>{{end}}
+    <h1>{{if eq .Page "login"}}Log in to Folio{{else}}Create your account{{end}}</h1>
+    <p class="meta">{{if eq .Page "login"}}Read the notebooks Claude typesets for you{{else}}Claude writes your notes. Folio typesets them into clean pages you can read and print.{{end}}</p>
+    {{if eq .Page "signup"}}<div class="flow"><b>Sign up</b><svg class="i" aria-hidden="true"><use href="/icons.svg#right"/></svg><span>Connect Claude</span><svg class="i" aria-hidden="true"><use href="/icons.svg#right"/></svg><span>Ask for notes</span></div>{{end}}
   </div>
   {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
   <form method="post" action="/{{.Page}}" class="card" data-busy="{{if eq .Page "login"}}Logging in…{{else}}Creating account…{{end}}">
@@ -58,7 +58,7 @@
         <button class="icon-btn" type="button" data-reveal="pw" aria-label="Show password" aria-pressed="false">Show</button>
       </span>
       <span class="hint warn" id="caps" hidden>Caps Lock is on</span>
-      {{if eq .Page "signup"}}<span class="hint" id="pwhint" data-min="10">At least 10 characters.</span>{{end}}
+      {{if eq .Page "signup"}}<span class="hint" id="pwhint" data-min="10">At least 10 characters</span>{{end}}
     </div>
     <button class="btn lg block" type="submit">{{if eq .Page "login"}}Log in{{else}}Create account{{end}}</button>
   </form>
@@ -138,7 +138,7 @@
       <td>{{if .LastUsedAt.IsZero}}—{{else}}<time data-recent datetime="{{.LastUsedAt.UTC.Format "2006-01-02T15:04:05Z07:00"}}">{{.LastUsedAt.Local.Format "2 Jan 15:04"}}</time>{{end}}</td>
       <td><form method="post" action="/connect/apps/{{.ID}}/revoke" class="inline"><button class="link danger" type="submit" data-confirm="Click to confirm">Disconnect</button></form></td>
     </tr>{{end}}
-  </table></div>{{else}}<p class="meta">No apps connected yet.</p>{{end}}
+  </table></div>{{else}}<p class="meta">No apps connected yet</p>{{end}}
 
   <h2>Then try a prompt</h2>
   <div class="copy prompt"><code id="p1">Use Folio to make study notes on how DNS works, with a diagram.</code><button class="btn secondary" type="button" data-copy="p1">Copy</button></div>
@@ -151,7 +151,7 @@
 <main id="main" class="auth consent">
   <div class="apps" aria-hidden="true">
     <span class="app-icon" data-initial="{{.ClientName}}"></span>
-    <span class="meta">⇄</span>
+    <svg class="i" aria-hidden="true"><use href="/icons.svg#swap"/></svg>
     <span class="app-icon"><img src="/logo.svg" alt=""></span>
   </div>
   <h1 class="center">Allow access?</h1>

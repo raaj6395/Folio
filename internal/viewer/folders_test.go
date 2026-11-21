@@ -143,10 +143,10 @@ func TestTemplatePill(t *testing.T) {
 	st.CreateNotebook(store.LocalUser, store.Notebook{Title: "Two Sum", Theme: "clean", Paper: "plain", Mode: "dark", Template: "dsa_problem"})
 	st.CreateNotebook(store.LocalUser, store.Notebook{Title: "DNS", Theme: "clean", Paper: "plain", Mode: "dark", Template: "topic"})
 	body := get(t, srv.URL+"/")
-	if !strings.Contains(body, `data-kind="DSA"`) || !strings.Contains(body, `<span class="pill" title="Template">DSA</span>`) {
-		t.Fatalf("templated card shows its pill and search key: %.2000s", body)
+	if !strings.Contains(body, `data-kind="DSA"`) || !strings.Contains(body, `<span class="tag" title="Template">DSA</span>`) {
+		t.Fatalf("templated card shows its tag and search key: %.2000s", body)
 	}
 	if strings.Count(body, `title="Template"`) != 1 {
-		t.Fatal("topic notebooks get no pill")
+		t.Fatal("topic notebooks get no tag")
 	}
 }

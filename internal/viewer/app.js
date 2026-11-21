@@ -71,7 +71,7 @@
       const el = document.getElementById(b.dataset.copy);
       const label = b.textContent;
       navigator.clipboard.writeText(el.textContent.trim()).then(() => {
-        b.textContent = "Copied ✓";
+        b.textContent = "Copied";
         setTimeout(() => (b.textContent = label), 1500);
       }, () => {
         getSelection().selectAllChildren(el);
@@ -121,7 +121,7 @@
     pw.addEventListener("keyup", capsCheck);
     if (hint) pw.addEventListener("input", () => {
       const left = +hint.dataset.min - pw.value.length;
-      hint.textContent = left > 0 ? left + " more character" + (left === 1 ? "" : "s") : "✓ Long enough";
+      hint.textContent = left > 0 ? left + " more character" + (left === 1 ? "" : "s") : "Long enough";
       hint.classList.toggle("ok", left <= 0);
     });
   }
@@ -173,7 +173,7 @@
       el("shareUrl").select();
     }, () => folio.toast("Couldn't create the link. Try again."));
     el("shareCopy").onclick = () => navigator.clipboard.writeText(el("shareUrl").value).then(() => {
-      el("shareCopy").textContent = "Copied ✓";
+      el("shareCopy").textContent = "Copied";
       setTimeout(() => (el("shareCopy").textContent = "Copy"), 1500);
     }, () => {
       el("shareUrl").select();

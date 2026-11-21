@@ -49,6 +49,9 @@ var appJS string
 //go:embed logo.svg
 var logoSVG string
 
+//go:embed icons.svg
+var iconsSVG string
+
 //go:embed error.html
 var errorHTML string
 
@@ -86,6 +89,7 @@ func New(st *store.Store, lb *layout.Builder, user func(*http.Request) (id, emai
 	asset("/style.css", "text/css; charset=utf-8", styleCSS)
 	asset("/app.js", "text/javascript; charset=utf-8", appJS)
 	asset("/logo.svg", "image/svg+xml", logoSVG)
+	asset("/icons.svg", "image/svg+xml", iconsSVG)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "folio viewer ok") })
 	mux.HandleFunc("GET /n/{id}", s.require(true, s.notebook))
 	mux.HandleFunc("GET /n/{id}/events", s.require(false, s.events))
