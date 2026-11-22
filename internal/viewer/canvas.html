@@ -136,54 +136,10 @@ function actual() {
   zoomAt(1, ...center());
 }
 
-const pointers = new Map();
-let pinch = null;
-stage.addEventListener("pointerdown", (e) => {
-  if (e.button !== 0) return;
-  stage.setPointerCapture(e.pointerId);
-  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-  stage.classList.add("dragging");
-  pinch = null;
+folio.panzoom(stage, {
+  pan: (dx, dy) => { tx += dx; ty += dy; draw(); },
+  zoom: (f, x, y) => zoomAt(z * f, x, y),
 });
-stage.addEventListener("pointermove", (e) => {
-  const prev = pointers.get(e.pointerId);
-  if (!prev) return;
-  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-  if (pointers.size === 1) {
-    tx += e.clientX - prev.x;
-    ty += e.clientY - prev.y;
-    draw();
-    return;
-  }
-  const [a, b] = [...pointers.values()];
-  const r = stage.getBoundingClientRect();
-  const now = { d: Math.hypot(a.x - b.x, a.y - b.y), x: (a.x + b.x) / 2 - r.left, y: (a.y + b.y) / 2 - r.top };
-  if (pinch) {
-    tx += now.x - pinch.x;
-    ty += now.y - pinch.y;
-    zoomAt(z * (now.d / pinch.d), now.x, now.y);
-  }
-  pinch = now;
-});
-const lift = (e) => {
-  pointers.delete(e.pointerId);
-  pinch = null;
-  if (!pointers.size) stage.classList.remove("dragging");
-};
-stage.addEventListener("pointerup", lift);
-stage.addEventListener("pointercancel", lift);
-stage.addEventListener("wheel", (e) => {
-  e.preventDefault();
-  if (e.ctrlKey || e.metaKey) {
-    const r = stage.getBoundingClientRect();
-    // A mouse notch sends deltaY ~100, a trackpad pinch many small ones: clamp so a notch is ~1.3x.
-    zoomAt(z * Math.exp(-Math.max(-50, Math.min(50, e.deltaY)) * 0.005), e.clientX - r.left, e.clientY - r.top);
-  } else {
-    tx -= e.deltaX;
-    ty -= e.deltaY;
-    draw();
-  }
-}, { passive: false });
 addEventListener("resize", () => {
   if (!placed) fit();
 });

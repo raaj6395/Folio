@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -95,7 +96,7 @@ type createIn struct {
 	Density  string     `json:"density,omitempty" jsonschema:"Spacing: compact, comfortable (default) or airy. The renderer adds gaps before headings and around boxes; no spacers needed"`
 	Folder   string     `json:"folder,omitempty" jsonschema:"Folder path to file the notebook in, e.g. Semester 1/Networks (at most 3 levels). Missing folders are created; matching ignores case. Omit for the top level"`
 	Template templateID `json:"template,omitempty" jsonschema:"Note template (see instructions); Folio checks its required sections"`
-	Format   string     `json:"format,omitempty" jsonschema:"a4 (default) or canvas: one unbounded sheet for flowcharts, maps and mind maps"`
+	Format   string     `json:"format,omitempty" jsonschema:"a4 (default); canvas: one unbounded sheet for flowcharts, maps and mind maps; system: an interactive system design (one system block, see get_authoring_guide topic system)"`
 }
 
 // templateID is a note template's ID; schemaFor lists the valid IDs as its enum.
@@ -103,6 +104,7 @@ type templateID string
 
 type guideIn struct {
 	Template templateID `json:"template,omitempty" jsonschema:"Return only this template's blueprint"`
+	Topic    string     `json:"topic,omitempty" jsonschema:"system: return only the reference for system notebooks"`
 }
 
 type listIn struct {
@@ -335,6 +337,9 @@ func (s *Server) register(m *mcp.Server) {
 			if err != nil {
 				return nil, NotebookInfo{}, err
 			}
+			if in.Format == "system" && tpl.ID != "" {
+				return nil, NotebookInfo{}, fmt.Errorf("templates are for A4 notes; a system notebook takes no template")
+			}
 			if in.Density == "" {
 				in.Density = cmp.Or(tpl.Density, store.DefaultDensity)
 			}
@@ -374,6 +379,9 @@ func (s *Server) register(m *mcp.Server) {
 				return nil, Outline{}, err
 			}
 			r, err := s.build(ctx, nb, bs)
+			if errors.Is(err, layout.ErrNoPages) {
+				r, err = &layout.Result{}, nil
+			}
 			if err != nil {
 				return nil, Outline{}, err
 			}
@@ -682,6 +690,13 @@ func (s *Server) register(m *mcp.Server) {
 	addTool(s, m, "get_authoring_guide", "How to write good Folio notes: every block type with an example, and style guidance. Read it once before writing.",
 		func(ctx context.Context, _ *mcp.CallToolRequest, in guideIn) (*mcp.CallToolResult, any, error) {
 			text := guide
+			switch in.Topic {
+			case "":
+			case "system":
+				text = systemGuide
+			default:
+				return nil, nil, fmt.Errorf(`unknown topic %q; valid: system`, in.Topic)
+			}
 			if in.Template != "" {
 				tpl, err := templateOf(in.Template)
 				if err != nil {

@@ -43,6 +43,7 @@
 | 📄 **Real pages, not chat text** | Notes come out as typeset A4 pages, ready to print, annotate on an iPad, or study from. |
 | 🧠 **Built for studying** | Definition and key-point boxes, comparison tables, diagrams, self-test Q&A cards and fill-in blanks with real ruled lines. |
 | 🗺️ **A canvas for big diagrams** | Flowcharts, architecture maps and mind maps go on one sheet that grows to fit, at full size. Pan and zoom in the viewer; download it as SVG or PDF. |
+| 🕹️ **Systems you can play with** | Ask Claude to design a system and you get a live simulation: send a request and watch it hop from node to node, kill Redis or a whole zone and send again, see what breaks and why. Try `make demo`. |
 | 🧩 **The right shape for each note** | Nine note templates (DSA problem, pattern, code solution, article, lecture, comparison, cheat sheet, system design, topic). Claude picks one from your request and Folio checks no section is missing. |
 | 🗂️ **Folders** | Organise notebooks into folders (3 levels deep), favourite them, and tell Claude where to file new notes. |
 | 🔗 **Share a read-only link** | Turn on a link for one notebook or canvas. Anyone with it can watch it live, with no login, but can't edit it or see your other notes. |
@@ -313,6 +314,7 @@ No. Your text reaches the typesetter only as data, never as code, so nothing ins
 - [x] Note templates: nine blueprints, picked by Claude and checked by Folio
 - [x] **Canvas:** one big sheet instead of A4 pages for flowcharts, architecture maps and mind maps, with pan and zoom
 - [x] Read-only share links
+- [x] **System notebooks:** interactive system designs built by Claude: send requests, kill and revive nodes, watch every hop ([plan](docs/system-design-plan.md))
 - [ ] Open a canvas in Excalidraw to edit it by hand ([evaluation](CANVAS_EVALUATION.md))
 - [ ] Search inside notebooks
 - [ ] Install on your phone's home screen
@@ -344,15 +346,15 @@ No. Your text reaches the typesetter only as data, never as code, so nothing ins
 
 | Group | Tools |
 |---|---|
-| Notebooks | `list_notebooks`, `create_notebook` (A4 or canvas, template, folder), `rename_notebook`, `delete_notebook`, `set_theme` (theme, paper, mode, density, format), `list_themes` |
+| Notebooks | `list_notebooks`, `create_notebook` (A4, canvas or system, template, folder), `rename_notebook`, `delete_notebook`, `set_theme` (theme, paper, mode, density, format), `list_themes` |
 | Folders | `list_folders`, `move_notebook` |
 | Preferences | `set_notebook_guidelines`, `get_notebook_guidelines` |
 | Reading | `get_outline`, `read_blocks`, `get_layout_info` |
 | Writing | `append_blocks`, `insert_blocks`, `update_block`, `delete_blocks`, `move_blocks` |
-| Checking | `check_layout`, `render_pages` (pages, or zoomed tiles of a canvas), `inspect_render` (the render as text: boxes, diagram nodes/edges, ASCII maps, geometry findings; for clients that can't see images), `preview_diagram` |
+| Checking | `check_layout`, `render_pages` (pages, or zoomed tiles of a canvas), `inspect_render` (the render as text: boxes, diagram nodes/edges, ASCII maps, geometry findings; for clients that can't see images), `preview_diagram`, `simulate_system` (one request through a system notebook, with nodes killed) |
 | History | `list_versions`, `undo`, `restore_version` |
 | Output | `export_pdf`, `get_viewer_url` |
-| Help | `get_authoring_guide` (also the resource `folio://guide`; pass `template` for one blueprint) |
+| Help | `get_authoring_guide` (also the resource `folio://guide`; pass `template` for one blueprint, or `topic: "system"` for system notebooks) |
 
 ### Build and test
 

@@ -378,7 +378,7 @@ init();
 </script>
 </body>
 </html>
-{{define "card"}}<article class="nb{{if eq .Format "canvas"}} canvas{{end}}" data-key="{{.ID}}:{{.Version}}{{if .Favorite}}:f{{end}}"{{if .Movable}} draggable="true" data-drag-nb="{{.ID}}"{{end}} data-title="{{.Title}}" data-kind="{{.Kind}}" data-updated="{{.UpdatedAt.UTC.Format "2006-01-02T15:04:05Z07:00"}}">
+{{define "card"}}<article class="nb{{if eq .Format "canvas"}} canvas{{end}}{{if eq .Format "system"}} system{{end}}" data-key="{{.ID}}:{{.Version}}{{if .Favorite}}:f{{end}}"{{if .Movable}} draggable="true" data-drag-nb="{{.ID}}"{{end}} data-title="{{.Title}}" data-kind="{{.Kind}}" data-updated="{{.UpdatedAt.UTC.Format "2006-01-02T15:04:05Z07:00"}}">
     <div class="thumb"><img alt="" loading="lazy" draggable="false" data-src="/n/{{.ID}}/thumb.png?v={{.Version}}"></div>
     {{if .Movable}}<input type="checkbox" class="pick" value="{{.ID}}" aria-label="Select {{.Title}}">{{end}}
     <form method="post" action="/n/{{.ID}}/favorite" class="fav">
@@ -393,7 +393,7 @@ init();
       <summary class="icon-btn" aria-label="Actions for {{.Title}}" title="Actions"><svg class="i" aria-hidden="true"><use href="/icons.svg#more"/></svg></summary>
       <div class="pop">
         <a class="item" href="/n/{{.ID}}">Open</a>
-        <a class="item" href="/n/{{.ID}}/pdf">Download PDF</a>
+        {{if ne .Format "system"}}<a class="item" href="/n/{{.ID}}/pdf">Download PDF</a>{{end}}
         <button class="item" type="button" data-rename="{{.ID}}" data-current="{{.Title}}">Rename…</button>
         {{if .Movable}}<button class="item" type="button" data-move="{{.ID}}" data-folder="{{.FolderID}}">Move to…</button>{{end}}
         <form method="post" action="/n/{{.ID}}/favorite"><input type="hidden" name="back" class="back"><input type="hidden" name="on" value="{{if .Favorite}}0{{else}}1{{end}}"><button class="item" type="submit">{{if .Favorite}}Remove from favourites{{else}}Add to favourites{{end}}</button></form>

@@ -1,0 +1,55 @@
+{
+  "engine": 1,
+  "direction": "right",
+  "nodes": [
+    {"id": "client", "kind": "client", "label": "Browser"},
+    {"id": "lb", "kind": "load_balancer", "label": "Load Balancer", "pool": ["api1", "api2", "api3"], "strategy": "hash",
+     "about": "Picks a server from a hash of the short code, so the same code always lands on the same server while the pool is unchanged.",
+     "when_down": "Every request fails with 502."},
+    {"id": "api1", "kind": "service", "label": "API 1", "about": "Creates and resolves short links.", "when_down": "Its share of codes re-hashes onto the other servers."},
+    {"id": "api2", "kind": "service", "label": "API 2", "about": "Creates and resolves short links.", "when_down": "Its share of codes re-hashes onto the other servers."},
+    {"id": "api3", "kind": "service", "label": "API 3", "about": "Creates and resolves short links.", "when_down": "Its share of codes re-hashes onto the other servers."},
+    {"id": "redis", "kind": "cache", "label": "Redis",
+     "about": "Two jobs: caches code → URL for fast redirects, and counts requests per client for rate limiting.",
+     "when_down": "Redirects fall back to the database replicas. Creating links fails, because the rate limiter can't count."},
+    {"id": "pg", "kind": "database", "label": "Postgres primary", "ms": 25, "replicas": ["pg_r1", "pg_r2"],
+     "about": "Takes every write. Reads go to the replicas.",
+     "when_down": "No new links can be created, but redirects keep working from the replicas."},
+    {"id": "pg_r1", "kind": "database", "label": "Replica 1", "ms": 20, "about": "A read-only copy of the primary.", "when_down": "Reads go to Replica 2."},
+    {"id": "pg_r2", "kind": "database", "label": "Replica 2", "ms": 20, "about": "A read-only copy of the primary.", "when_down": "Reads go to Replica 1."}
+  ],
+  "handlers": {
+    "shorten": [
+      {"call": "redis", "op": "incr", "key": "rate:client", "limit": 5,
+       "say": "Rate limit: count this client's requests (5 allowed)"},
+      {"call": "pg", "op": "write", "key": "url:{key}"},
+      {"call": "redis", "op": "set", "key": "url:{key}", "async": true}
+    ],
+    "resolve": [
+      {"call": "redis", "op": "get", "key": "url:{key}", "on": {"hit": "return", "down": "next"}},
+      {"call": "pg", "op": "read", "key": "url:{key}"},
+      {"call": "redis", "op": "set", "key": "url:{key}", "async": true}
+    ]
+  },
+  "requests": [
+    {"id": "redirect", "label": "GET /{key}", "to": "lb", "handler": "resolve", "keys": ["abc123", "xyz789", "q7k2m9"]},
+    {"id": "create", "label": "POST /shorten → {key}", "to": "lb", "handler": "shorten", "keys": ["abc123", "xyz789", "q7k2m9"]}
+  ],
+  "scenarios": [
+    {"label": "Redis is down", "kill": ["redis"], "request": "redirect",
+     "expect": {"status": 200, "visits": ["pg_r1"]},
+     "explain": "Redirects skip the cache and read a replica. Reads scale by adding replicas, not by touching the primary."},
+    {"label": "Primary is down", "kill": ["pg"], "request": "redirect",
+     "expect": {"status": 200, "avoids": ["pg"]},
+     "explain": "Reads only need a replica, so redirects survive the primary failing. Creating a link now fails: try it."},
+    {"label": "Can't create without primary", "kill": ["pg"], "request": "create",
+     "expect": {"status": 502},
+     "explain": "Writes have exactly one place to go. That is why a primary failure needs a failover plan."},
+    {"label": "Both replicas down", "kill": ["pg_r1", "pg_r2"], "request": "redirect",
+     "expect": {"status": 200, "visits": ["pg"]},
+     "explain": "With no replicas left, reads fall back to the primary, which now carries all the load."},
+    {"label": "API 2 down", "kill": ["api2"], "request": "redirect", "key": "xyz789",
+     "expect": {"status": 200, "avoids": ["api2"]},
+     "explain": "Hashing over the live servers moves this code to another server. With plain hashing many codes move at once; consistent hashing limits that."}
+  ]
+}

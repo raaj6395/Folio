@@ -33,6 +33,7 @@ commands:
   http [--no-auth]            serve MCP over HTTP (/mcp), accounts and the viewer; address from FOLIO_HTTP_ADDR or $PORT
   admin adopt|reset-password|disable-user|require-owners ...   account administration (uses FOLIO_DB_URL)
   export <notebook-id> [-o file.pdf]
+  demo                        install three demo system notebooks (read path, URL shortener, ticket booking)
   import [--from file.db] [--owner email] [--dry-run] [--include-deleted]   copy notebooks from a SQLite file into FOLIO_DB_URL
   doctor                      check the environment
 `
@@ -225,6 +226,9 @@ func main() {
 	case "admin":
 		setupLog(true)
 		runAdmin(os.Args[2:])
+	case "demo":
+		setupLog(false)
+		runDemo()
 	case "export":
 		setupLog(false)
 		fs := flag.NewFlagSet("export", flag.ExitOnError)

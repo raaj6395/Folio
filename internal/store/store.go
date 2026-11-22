@@ -298,8 +298,9 @@ const (
 
 var Densities = []string{"compact", "comfortable", "airy"}
 
-// Formats: a4 pages, or one canvas sheet that grows to fit its content.
-var Formats = []string{"a4", "canvas"}
+// Formats: a4 pages, one canvas sheet that grows to fit its content, or a system: one interactive
+// system design (a single "system" block) that the viewer simulates instead of typesetting.
+var Formats = []string{"a4", "canvas", "system"}
 
 type Snapshot struct {
 	Version   int       `json:"version"`

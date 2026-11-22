@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#141415">
+<title>{{.Title}} · Folio</title>
+{{if .Shared}}<meta name="robots" content="noindex">
+{{end}}<link rel="icon" href="/logo.svg" type="image/svg+xml">
+<script>
+  const notebookMode = {{.Mode}};
+  let view = "";
+  try { view = localStorage.getItem("folio-view-mode") || ""; } catch (e) {}
+  document.documentElement.dataset.auto = notebookMode;
+  document.documentElement.dataset.theme = view || notebookMode;
+</script>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="system-view" data-base="{{.Base}}" data-id="{{.ID}}">
+<header class="bar">
+  {{if .Shared}}<a class="icon-btn" href="/" title="Made with Claude + Folio" aria-label="Folio home"><img src="/logo.svg" alt="" width="18" height="18"></a>{{else}}<a class="icon-btn" href="{{if .FolderID}}/f/{{.FolderID}}{{else}}/{{end}}" title="Back to notebooks" aria-label="Back to notebooks"><svg class="i" aria-hidden="true"><use href="/icons.svg#back"/></svg></a>{{end}}
+  <span class="grow title" id="title">{{.Title}}</span>
+  {{if .Shared}}<span class="tag" title="You can play with this system but not change it">Read-only</span>{{end}}
+  <span class="live" id="status" role="status">Connecting…</span>
+  <span class="seg wide-only" role="group" aria-label="Zoom">
+    <button type="button" id="zout" title="Zoom out (−)" aria-label="Zoom out"><svg class="i" aria-hidden="true"><use href="/icons.svg#minus"/></svg></button>
+    <button type="button" id="zreset" title="Fit to screen (0)">100%</button>
+    <button type="button" id="zin" title="Zoom in (+)" aria-label="Zoom in"><svg class="i" aria-hidden="true"><use href="/icons.svg#plus"/></svg></button>
+  </span>
+  <details class="menu">
+    <summary class="icon-btn" title="More" aria-label="More options"><svg class="i" aria-hidden="true"><use href="/icons.svg#more"/></svg></summary>
+    <div class="pop">
+      <div class="label">Appearance</div>
+      <div class="pad">
+        <div class="seg" role="group" aria-label="Appearance in this browser">
+          <button type="button" data-view="" title="Follow the system's own mode">Auto</button>
+          <button type="button" data-view="dark"><svg class="i" aria-hidden="true"><use href="/icons.svg#moon"/></svg>Dark</button>
+          <button type="button" data-view="light"><svg class="i" aria-hidden="true"><use href="/icons.svg#sun"/></svg>Light</button>
+        </div>
+        <div class="hint">Only changes how you see it here.</div>
+      </div>
+      <hr>
+      {{if not .Shared}}<button class="item" type="button" id="shareBtn" data-base="{{.Base}}" data-path="{{.SharePath}}">Share link… <span class="meta" id="shareState">{{if .SharePath}}On{{else}}Off{{end}}</span></button>{{end}}
+      <button class="item" type="button" id="helpBtn">Keyboard shortcuts <kbd>?</kbd></button>
+      <hr>
+      <div class="label">System</div>
+      <div class="item static">Version <span><b id="version">{{.Version}}</b> · <span id="ago"></span></span></div>
+    </div>
+  </details>
+  <button class="icon-btn" type="button" id="panelBtn" title="Details and log (l)" aria-label="Details and log" aria-controls="panel" aria-expanded="true"><svg class="i" aria-hidden="true"><use href="/icons.svg#contents"/></svg></button>
+</header>
+
+<div id="stage" tabindex="-1" aria-label="System diagram: drag to move, pinch or ctrl+scroll to zoom">
+  <div id="world"><svg id="wires" aria-hidden="true"></svg><div id="nodes"></div></div>
+  <div class="sys-empty" id="empty" hidden>
+    <h2>Nothing here yet</h2>
+    <p class="meta">Claude is still building this system. It appears here as soon as it's written.</p>
+  </div>
+</div>
+
+<aside id="panel" aria-label="Details and log">
+  <section id="details" hidden></section>
+  <section class="logwrap">
+    <div class="panel-head"><span class="label">Log</span><button class="link" type="button" id="clearLog">Clear</button></div>
+    <div id="log"><div id="logInner" aria-live="polite"><p class="meta hintline">Pick a request and press Send. Kill a node with its power button, then send again.</p></div></div>
+  </section>
+</aside>
+
+<div id="dock" role="toolbar" aria-label="Requests">
+  <div class="dock-row">
+    <label class="field"><span>Request</span><select id="req"></select></label>
+    <label class="field"><span>Key</span><select id="key"></select></label>
+    <button class="btn" type="button" id="send" title="Send the request (s)"><svg class="i" aria-hidden="true"><use href="/icons.svg#play"/></svg>Send</button>
+    <span class="result" id="result" role="status"></span>
+    <span class="grow"></span>
+    <label class="field wide-only"><span>Speed</span><select id="speed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select></label>
+    <button class="btn secondary" type="button" id="reset" title="Revive everything and empty caches and queues (r)"><svg class="i" aria-hidden="true"><use href="/icons.svg#reset"/></svg>Reset</button>
+  </div>
+  <div class="dock-row" id="scenWrap" hidden><span class="meta">Try</span><div class="chips" id="scenarios"></div></div>
+</div>
+
+<dialog id="help" aria-labelledby="helpTitle">
+  <h2 id="helpTitle">Keyboard shortcuts</h2>
+  <table>
+    <tr><td><kbd>s</kbd></td><td>Send the request</td></tr>
+    <tr><td><kbd>k</kbd></td><td>Kill or revive the selected node</td></tr>
+    <tr><td><kbd>r</kbd></td><td>Reset everything</td></tr>
+    <tr><td><kbd>Esc</kbd></td><td>Close the node details</td></tr>
+    <tr><td>Drag · scroll</td><td>Move around</td></tr>
+    <tr><td>Pinch · <kbd>ctrl</kbd>+scroll</td><td>Zoom</td></tr>
+    <tr><td><kbd>+</kbd> <kbd>−</kbd> <kbd>0</kbd></td><td>Zoom in / out / fit</td></tr>
+    <tr><td><kbd>l</kbd></td><td>Show or hide details and log</td></tr>
+    <tr><td><kbd>t</kbd></td><td>Switch appearance</td></tr>
+    <tr><td><kbd>?</kbd></td><td>This help</td></tr>
+  </table>
+  <button class="btn secondary block" type="button" data-close>Close</button>
+</dialog>
+{{if .Shared}}<dialog id="gone" aria-labelledby="goneTitle">
+  <h2 id="goneTitle">This link no longer works</h2>
+  <p class="meta">The owner stopped sharing it, or deleted it.</p>
+  <a class="btn block" href="/">Made with Claude + Folio</a>
+</dialog>
+{{else}}<dialog id="gone" aria-labelledby="goneTitle">
+  <h2 id="goneTitle">This system was deleted</h2>
+  <p class="meta">It no longer exists, so there's nothing more to show here.</p>
+  <a class="btn block" href="/">Back to notebooks</a>
+</dialog>{{end}}
+
+<script src="/app.js"></script>
+<script src="/system.js"></script>
+</body>
+</html>

@@ -189,6 +189,7 @@ func TestAccountsTokensAndIsolation(t *testing.T) {
 			"inspect_render":          {},
 			"export_pdf":              {},
 			"get_viewer_url":          {},
+			"simulate_system":         {"request": "read"},
 			"append_blocks":           {"blocks": []map[string]any{{"type": "divider"}}},
 			"insert_blocks":           {"after_block_id": "start", "blocks": []map[string]any{{"type": "divider"}}},
 			"update_block":            {"block_id": blockID, "block": map[string]any{"type": "paragraph", "text": "pwned"}},
