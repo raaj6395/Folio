@@ -29,8 +29,6 @@ const instructionsHead = `Folio typesets study notes onto A4 pages, or onto one 
 
 Canvas (create_notebook format "canvas", or set_theme format to switch): pick it for flowcharts, architecture maps, mind maps, whiteboards or anything too big for a page. Diagrams keep their natural size (up to ~350 nodes); other blocks are A4-width cards stacked top to bottom. No page_break; page-fill numbers and the H1-per-page rules don't apply, canvas_mm gives its size. See "Canvas" in get_authoring_guide.
 
-System (create_notebook format "system"): an interactive system design the user plays with in the viewer: they send requests, kill and revive nodes, and watch each request move hop by hop. Make one when the user asks to design, build or simulate a system ("design a URL shortener", "system design of WhatsApp"); use the system_design template only for revision notes about a design. A system notebook holds exactly one block of type "system", a JSON spec (no coordinates; Folio lays it out). Read get_authoring_guide with topic "system" first. There are no pages: skip check_layout and render_pages, and check behaviour with simulate_system instead. To change it, read_blocks then update_block with the whole new spec; the open viewer updates live.
-
 Notebooks are dark by default; pass mode "light" to create_notebook (or set_theme) only when the user asks for light/printing. Density (compact, comfortable default, airy) adds gaps automatically.
 Every block has a stable ID (b_xxxxxxxx); use IDs for small targeted edits instead of rewriting.
 Folders: when the user names a folder, course or subject to keep notes in, pass folder to create_notebook (a path like "Semester 1/Networks", at most 3 levels) or use move_notebook. Call list_folders first if unsure and reuse an existing folder; don't invent folders the user didn't ask for.`
@@ -198,7 +196,6 @@ func New(st *store.Store, lb *layout.Builder, home, publicURL, localUser string)
 	s := mcp.NewServer(&mcp.Implementation{Name: "folio", Version: "0.1.0"}, &mcp.ServerOptions{Instructions: instructions})
 	srv.register(s)
 	srv.registerEdit(s)
-	srv.registerSystem(s)
 	s.AddResource(&mcp.Resource{URI: "folio://guide", Name: "authoring-guide", Title: "Folio authoring guide", MIMEType: "text/markdown"},
 		func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
 			return &mcp.ReadResourceResult{Contents: []*mcp.ResourceContents{{URI: "folio://guide", MIMEType: "text/markdown", Text: guide}}}, nil
@@ -226,7 +223,6 @@ type MutationResult struct {
 	ChangedBlockIDs    []string      `json:"changed_block_ids"`
 	Layout             LayoutSummary `json:"layout"`
 	Warnings           []string      `json:"warnings"`
-	System             any           `json:"system,omitempty"` // *sim.Summary; untyped so its schema doesn't repeat in every write tool
 	LayoutHints        []string      `json:"layout_hints,omitempty"`
 	NotebookGuidelines string        `json:"notebook_guidelines,omitempty"`
 	TemplateChecklist  string        `json:"template_checklist,omitempty"`
@@ -236,9 +232,6 @@ func (s *Server) mutate(ctx context.Context, id string, expected *int, tool, sum
 	var changed []string
 	nb, bs, err := s.st.Mutate(userOf(ctx), id, expected, tool, summary, func(nb *store.Notebook, bs []model.Block) ([]model.Block, error) {
 		next, ch, err := fn(nb, bs)
-		if err == nil {
-			err = checkFormat(nb, next)
-		}
 		changed = ch
 		return next, err
 	})
@@ -258,19 +251,6 @@ func (s *Server) result(ctx context.Context, nb store.Notebook, bs []model.Block
 		if t, ok := notetemplates.ByID(nb.Template); ok {
 			res.TemplateChecklist = t.Checklist()
 		}
-	}
-	if nb.Format == "system" {
-		sum, err := systemSummary(bs)
-		if err != nil {
-			res.Warnings = append(res.Warnings, "the system no longer validates: "+err.Error())
-		}
-		if sum != nil {
-			res.System = sum
-		}
-		if len(bs) == 0 {
-			res.Warnings = append(res.Warnings, `empty system notebook: append one block of type "system" (see get_authoring_guide topic "system")`)
-		}
-		return res
 	}
 	r, err := s.build(ctx, nb, bs)
 	if errors.Is(err, errLayoutPending) {

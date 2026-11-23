@@ -466,8 +466,7 @@ func TestGuidelinesDensityAndCheckLayout(t *testing.T) {
 
 // Every tool's schema rides along in every chat with Folio connected, so growth must be deliberate.
 // Templates took it from 31,875 to 32,837 bytes; canvas (format, tiles, canvas_mm in every
-// write result) to 34,066; inspect_render (output as text, no output schema) to 35,241; system
-// notebooks (simulate_system, the format and guide topic) to ~36,600.
+// write result) to 34,066; inspect_render (output as text, no output schema) to 35,241.
 // Raise the budget only on purpose.
 func TestToolListBudget(t *testing.T) {
 	c := newClient(t)
@@ -476,8 +475,8 @@ func TestToolListBudget(t *testing.T) {
 		t.Fatal(err)
 	}
 	js, _ := json.Marshal(tools.Tools)
-	if n := len(js); n > 36_800 {
-		t.Fatalf("tools/list is %d bytes, budget 36,800", n)
+	if n := len(js); n > 35_500 {
+		t.Fatalf("tools/list is %d bytes, budget 35,500", n)
 	}
 }
 
@@ -640,7 +639,7 @@ func TestCanvas(t *testing.T) {
 
 	var themes ThemesOut
 	c.call("list_themes", map[string]any{}, &themes)
-	if strings.Join(themes.Formats, ",") != "a4,canvas,system" {
+	if strings.Join(themes.Formats, ",") != "a4,canvas" {
 		t.Fatalf("formats: %v", themes.Formats)
 	}
 	var onA4 MutationResult

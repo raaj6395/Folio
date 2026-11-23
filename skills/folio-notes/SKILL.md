@@ -1,6 +1,6 @@
 ---
 name: folio-notes
-description: Write, revise, and lay out study notes as real Folio notebook pages through the Folio MCP connector. Use this whenever the user asks for notes, revision notes, a cheat sheet, a study page, a summary to print or study from, a flowchart, mind map or architecture map on a canvas, an interactive system design to play with ("design a URL shortener"), or to add, fix, restyle, undo, or export a Folio notebook — even if they only say "make notes on X", "turn this into notes", or "notes for my exam" and never name Folio. Plan the pages, write the blocks, and fix the layout yourself. Do not use this for Apple Notes, a markdown file, a Google Doc, or a slide deck.
+description: Write, revise, and lay out study notes as real Folio notebook pages through the Folio MCP connector. Use this whenever the user asks for notes, revision notes, a cheat sheet, a study page, a summary to print or study from, a flowchart, mind map or architecture map on a canvas, or to add, fix, restyle, undo, or export a Folio notebook — even if they only say "make notes on X", "turn this into notes", or "notes for my exam" and never name Folio. Plan the pages, write the blocks, and fix the layout yourself. Do not use this for Apple Notes, a markdown file, a Google Doc, or a slide deck.
 compatibility: Requires the Folio MCP connector to be connected in this chat. Tools are create_notebook, append_blocks, check_layout, and the other Folio tools.
 ---
 
@@ -28,7 +28,6 @@ Do not ask about theme, length, or structure. Pick them and mention the choice i
 | They say | You pick |
 |---|---|
 | nothing about look | theme `clean`, paper `plain`, mode `dark`, density `comfortable` |
-| design, build or simulate a system ("design a URL shortener", "system design of WhatsApp") | `format: system`: one `system` block the user plays with (send requests, kill nodes). Read `get_authoring_guide` with topic `system` first; check with `simulate_system`, not `check_layout` or `render_pages`. Revision notes *about* a design stay A4 with the `system_design` template |
 | flowchart, canvas, whiteboard, mind map, architecture map, "too big for a page" | `format: canvas`: one big diagram at natural size plus short notes, no page breaks (see "Canvas" in the authoring guide) |
 | handwritten, notebook, sketch | theme `notebook` (ruled paper, handwriting, sketch diagrams) |
 | bullet journal, dots | theme `dotgrid` (dotted paper) |

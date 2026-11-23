@@ -11,8 +11,6 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
-
-	"github.com/raaj6395/folio/internal/sim"
 )
 
 type Block struct {
@@ -56,7 +54,6 @@ var registry = map[string]func() data{
 	"two_column": func() data { return &TwoColumn{} },
 	"divider":    func() data { return &Empty{} },
 	"page_break": func() data { return &Empty{} },
-	"system":     func() data { return &System{} },
 }
 
 func Types() []string {
@@ -613,37 +610,6 @@ func (b Block) DiagramSources() []string {
 		out = append(out, k.DiagramSources()...)
 	}
 	return out
-}
-
-// System is the one block of a system notebook: a spec the sim engine runs.
-type System struct{ sim.Spec }
-
-// UnmarshalJSON decodes strictly (sim reports unknown fields with their path); validate runs the
-// full check, so reading a stored block back stays cheap.
-func (s *System) UnmarshalJSON(data []byte) error {
-	sp, err := sim.Decode(data)
-	if err != nil {
-		return err
-	}
-	s.Spec = *sp
-	return nil
-}
-
-func (s *System) validate() error {
-	_, err := sim.Validate(&s.Spec)
-	return err
-}
-func (s *System) doc() map[string]any { return map[string]any{} }
-func (s *System) summary() string {
-	return fmt.Sprintf("system: %d nodes, %d requests, %d scenarios", len(s.Nodes), len(s.Requests), len(s.Scenarios))
-}
-
-// SystemSpec is the spec of a system block.
-func (b Block) SystemSpec() (*sim.Spec, bool) {
-	if b.Type != "system" {
-		return nil, false
-	}
-	return &b.decode().(*System).Spec, true
 }
 
 type Empty struct{}

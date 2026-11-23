@@ -196,53 +196,6 @@
     };
   }
 
-  // panzoom turns drag, pinch and wheel on stage into pan(dx, dy) and zoom(factor, x, y) calls,
-  // x and y relative to the stage; the page keeps its own transform. skip(e) leaves a pointerdown
-  // alone (a button on the stage), since capturing the pointer would swallow its click.
-  folio.panzoom = (stage, { pan, zoom, skip }) => {
-    const pointers = new Map();
-    let pinch = null;
-    stage.addEventListener("pointerdown", (e) => {
-      if (e.button !== 0 || skip?.(e)) return;
-      stage.setPointerCapture(e.pointerId);
-      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      stage.classList.add("dragging");
-      pinch = null;
-    });
-    stage.addEventListener("pointermove", (e) => {
-      const prev = pointers.get(e.pointerId);
-      if (!prev) return;
-      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (pointers.size === 1) return pan(e.clientX - prev.x, e.clientY - prev.y);
-      const [a, b] = [...pointers.values()];
-      const r = stage.getBoundingClientRect();
-      const now = { d: Math.hypot(a.x - b.x, a.y - b.y), x: (a.x + b.x) / 2 - r.left, y: (a.y + b.y) / 2 - r.top };
-      if (pinch) {
-        pan(now.x - pinch.x, now.y - pinch.y);
-        zoom(now.d / pinch.d, now.x, now.y);
-      }
-      pinch = now;
-    });
-    const lift = (e) => {
-      pointers.delete(e.pointerId);
-      pinch = null;
-      if (!pointers.size) stage.classList.remove("dragging");
-    };
-    stage.addEventListener("pointerup", lift);
-    stage.addEventListener("pointercancel", lift);
-    stage.addEventListener("wheel", (e) => {
-      if (skip?.(e)) return;
-      e.preventDefault();
-      if (e.ctrlKey || e.metaKey) {
-        const r = stage.getBoundingClientRect();
-        // A mouse notch sends deltaY ~100, a trackpad pinch many small ones: clamp so a notch is ~1.3x.
-        zoom(Math.exp(-Math.max(-50, Math.min(50, e.deltaY)) * 0.005), e.clientX - r.left, e.clientY - r.top);
-      } else {
-        pan(-e.deltaX, -e.deltaY);
-      }
-    }, { passive: false });
-  };
-
   const closeMenus = (except) => document.querySelectorAll("details.menu[open]").forEach((m) => { if (m !== except) m.open = false; });
   document.addEventListener("click", (e) => closeMenus(e.target.closest("details.menu")));
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenus(); });

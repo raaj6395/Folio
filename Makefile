@@ -1,6 +1,6 @@
 -include .env
 
-.PHONY: build test test-pg lint run-viewer run-http kitchen-sink demo db-up db-down db-reset db-psql
+.PHONY: build test test-pg lint run-viewer run-http kitchen-sink db-up db-down db-reset db-psql
 
 PG_ENV = FOLIO_DB_URL=$(FOLIO_DB_URL) FOLIO_HTTP_ADDR=$(FOLIO_HTTP_ADDR) FOLIO_PUBLIC_URL=$(FOLIO_PUBLIC_URL)
 
@@ -18,10 +18,6 @@ lint:
 
 run-viewer: build
 	bin/folio serve
-
-# Install the demo system notebooks, then open them in the viewer (make run-viewer).
-demo: build
-	bin/folio demo
 
 run-http: build db-up
 	$(PG_ENV) bin/folio http

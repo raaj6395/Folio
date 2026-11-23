@@ -1,7 +1,7 @@
 ---
 name: System design
 label: Design
-use_when: revision notes about a system design ("notes on the system design of WhatsApp"); to design, build or simulate a system, make a system notebook (format "system") instead
+use_when: designing a system ("design a URL shortener", "system design of WhatsApp")
 required: Functional, Non-functional, Estimates | Components, Data model | Trade-offs
 ---
 **Unit:** one part of the system per H1, each on its own page:

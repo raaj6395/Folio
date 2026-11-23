@@ -40,12 +40,6 @@ var notebookHTML string
 //go:embed canvas.html
 var canvasHTML string
 
-//go:embed system.html
-var systemHTML string
-
-//go:embed system.js
-var systemJS string
-
 //go:embed style.css
 var styleCSS string
 
@@ -65,7 +59,6 @@ var (
 	indexTmpl    = template.Must(template.New("index").Parse(indexHTML))
 	notebookTmpl = template.Must(template.New("notebook").Parse(notebookHTML))
 	canvasTmpl   = template.Must(template.New("canvas").Parse(canvasHTML))
-	systemTmpl   = template.Must(template.New("system").Parse(systemHTML))
 	errorTmpl    = template.Must(template.New("error").Parse(errorHTML))
 )
 
@@ -95,7 +88,6 @@ func New(st *store.Store, lb *layout.Builder, user func(*http.Request) (id, emai
 	}
 	asset("/style.css", "text/css; charset=utf-8", styleCSS)
 	asset("/app.js", "text/javascript; charset=utf-8", appJS)
-	asset("/system.js", "text/javascript; charset=utf-8", systemJS)
 	asset("/logo.svg", "image/svg+xml", logoSVG)
 	asset("/icons.svg", "image/svg+xml", iconsSVG)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "folio viewer ok") })
@@ -105,7 +97,6 @@ func New(st *store.Store, lb *layout.Builder, user func(*http.Request) (id, emai
 	mux.HandleFunc("GET /n/{id}/pdf", s.require(true, s.pdf))
 	mux.HandleFunc("GET /n/{id}/thumb.png", s.require(false, s.thumb))
 	mux.HandleFunc("GET /n/{id}/canvas.svg", s.require(false, s.svg))
-	mux.HandleFunc("GET /n/{id}/system.json", s.require(false, s.systemJSON))
 	// Share links: read-only routes for one notebook, no login. Only these GETs exist under /s/.
 	mux.HandleFunc("GET /s/{token}", s.shared(s.notebook))
 	mux.HandleFunc("GET /s/{token}/events", s.shared(s.events))
@@ -113,12 +104,8 @@ func New(st *store.Store, lb *layout.Builder, user func(*http.Request) (id, emai
 	mux.HandleFunc("GET /s/{token}/pdf", s.shared(s.pdf))
 	mux.HandleFunc("GET /s/{token}/thumb.png", s.shared(s.thumb))
 	mux.HandleFunc("GET /s/{token}/canvas.svg", s.shared(s.svg))
-	mux.HandleFunc("GET /s/{token}/system.json", s.shared(s.systemJSON))
 	cop := http.NewCrossOriginProtection()
 	mux.Handle("POST /n/{id}/share", cop.Handler(s.require(false, s.share)))
-	// Running a system changes nothing stored, so share-link visitors may play with it too.
-	mux.Handle("POST /n/{id}/system/run", cop.Handler(s.require(false, s.systemRun)))
-	mux.Handle("POST /s/{token}/system/run", cop.Handler(s.shared(s.systemRun)))
 	mux.Handle("POST /n/{id}/unshare", cop.Handler(s.require(false, s.unshare)))
 	mux.Handle("POST /n/{id}/rename", cop.Handler(s.require(true, s.rename)))
 	mux.Handle("POST /n/{id}/delete", cop.Handler(s.require(true, s.del)))
@@ -292,9 +279,6 @@ func (s *Server) state(r *http.Request) (State, error) {
 	if err != nil {
 		return State{}, err
 	}
-	if nb.Format == "system" {
-		return State{ID: nb.ID, Title: nb.Title, Theme: nb.Theme, Mode: nb.Mode, Version: nb.Version, UpdatedAt: nb.UpdatedAt, Pages: []string{}, Outline: []Heading{}, Format: nb.Format}, nil
-	}
 	ctx := r.Context()
 	res, err := s.lb.Build(ctx, nb, bs)
 	if err != nil {
@@ -331,10 +315,6 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 		renderError(w, http.StatusNotFound, "Folder not found", "It may have been deleted, or it belongs to another account.")
 		return
 	}
-	if errors.Is(err, layout.ErrNoPages) {
-		renderError(w, http.StatusNotFound, "No pages here", "This is an interactive system: open it to play with it. It has no pages or PDF.")
-		return
-	}
 	if errors.Is(err, store.ErrNotFound) {
 		renderError(w, http.StatusNotFound, "Notebook not found", "It may have been deleted, or it belongs to another account.")
 		return
@@ -351,12 +331,7 @@ type card struct {
 }
 
 // Kind is the card's template pill, e.g. "DSA" ("" for none).
-func (c card) Kind() string {
-	if c.Format == "system" {
-		return "System"
-	}
-	return notetemplates.Label(c.Template)
-}
+func (c card) Kind() string { return notetemplates.Label(c.Template) }
 
 type treeItem struct{ ID, Label, Path string }
 
@@ -526,14 +501,11 @@ func (s *Server) notebook(w http.ResponseWriter, r *http.Request) {
 	} else if nb.ShareToken != "" {
 		p.SharePath = "/s/" + nb.ShareToken
 	}
-	switch nb.Format {
-	case "canvas":
+	if nb.Format == "canvas" {
 		canvasTmpl.Execute(w, p)
-	case "system":
-		systemTmpl.Execute(w, p)
-	default:
-		notebookTmpl.Execute(w, p)
+		return
 	}
+	notebookTmpl.Execute(w, p)
 }
 
 // svg serves a canvas as one SVG: the viewer zooms it without blurring, and it is the SVG download.
@@ -638,10 +610,6 @@ func (s *Server) png(w http.ResponseWriter, r *http.Request, n, ppi int, all boo
 	nb, bs, err := s.load(r)
 	if err != nil {
 		s.fail(w, err)
-		return
-	}
-	if nb.Format == "system" && !all {
-		s.systemThumb(w, r, nb, bs)
 		return
 	}
 	res, err := s.lb.Build(r.Context(), nb, bs)

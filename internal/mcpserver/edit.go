@@ -3,14 +3,12 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/raaj6395/folio/internal/layout"
 	"github.com/raaj6395/folio/internal/model"
 	"github.com/raaj6395/folio/internal/store"
 )
@@ -258,9 +256,6 @@ func (s *Server) registerEdit(m *mcp.Server) {
 				return nil, nil, err
 			}
 			r, err := s.build(ctx, nb, bs)
-			if errors.Is(err, layout.ErrNoPages) {
-				r, err = &layout.Result{}, nil
-			}
 			if err != nil {
 				return nil, nil, err
 			}

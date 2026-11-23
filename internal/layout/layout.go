@@ -214,13 +214,7 @@ func (b *Builder) Cached(nb store.Notebook) *Result {
 	return &r
 }
 
-// ErrNoPages is what every page operation (layout, PNG, PDF, SVG) returns for a system notebook.
-var ErrNoPages = errors.New("this is a system notebook: it has no pages to lay out, render or export. Check it with simulate_system and open it with get_viewer_url")
-
 func (b *Builder) build(ctx context.Context, nb store.Notebook, blocks []model.Block) (*Result, error) {
-	if nb.Format == "system" {
-		return nil, ErrNoPages
-	}
 	if r := b.Cached(nb); r != nil {
 		return r, nil
 	}
